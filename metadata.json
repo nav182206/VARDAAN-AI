@@ -1,0 +1,7 @@
+{
+  "name": "Vardaan AI - Your Personalized Academic Partner",
+  "description": "A high-performance learning companion for 11th and 12th-grade students, featuring Socratic coaching, multilingual support, logical misconception analysis, and exam stress management.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
