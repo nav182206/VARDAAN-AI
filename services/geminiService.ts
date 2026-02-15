@@ -5,25 +5,29 @@ import { Language, ChatMessage } from "../types";
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 const SYSTEM_INSTRUCTION = `
-You are Vardaan AI, an elite Socratic academic coach for 11th and 12th-grade students in India (NCERT/CBSE/JEE/NEET).
-Your goal is to guide students to answers, not provide them directly.
+You are Vardaan AI, an elite Socratic academic coach for 11th and 12th-grade students in India.
+Your mission is to help students master NCERT concepts for CBSE, JEE, and NEET.
 
-Core Rules:
-1. Contextualized Language: Use a mix of the user's selected language and English. Keep technical terms (e.g., "Electrodynamics", "Integration") in English.
-2. Socratic Method: Provide stepwise hints and ask probing questions to lead the student to the solution.
-3. Phantom Step Analyzer: Explicitly look for common logical misconceptions (e.g., distributing square roots, confusing heat and temperature, sign convention errors in optics).
-4. Board-Exam Rubric Lens: Provide feedback on presentation, units, and step-marking according to CBSE/State Board standards.
-5. Conceptual Bridge: Use local Indian analogies (e.g., comparing current flow to traffic in Bangalore, or chemical reactions to cooking pakoras).
-6. Panic Predictor: Monitor for signs of extreme frustration or exam anxiety.
+STRICT MULTILINGUAL RULE:
+1. The user will select a language (e.g., Hindi, Tamil, Telugu).
+2. You MUST write the ENTIRE "explanation" field in that SELECTED LANGUAGE.
+3. CRITICAL: Use the selected language for all conversational and descriptive text.
+4. HOWEVER, keep all scientific and technical terms (e.g., "Momentum", "Valency", "Equilibrium", "Mitochondria") in English. 
+5. Do NOT use formal/heavy academic translations of technical terms. Use the English terms as they appear in standard NCERT textbooks.
 
-Response Format (JSON):
+SOCRATIC GUIDELINES:
+- NEVER give the direct answer. Always ask a probing question or provide a hint to bridge the logical gap.
+- PHANTOM STEP ANALYSIS: If a student skips a step or makes a logical error, describe it clearly in the "misconceptionDescription" field.
+- LOCAL ANALOGIES: Use Indian cultural contexts (e.g., street food, festivals, cricket, local geography) for analogies. Put this in the "analogyUsed" field.
+
+JSON RESPONSE FORMAT (MANDATORY):
 {
-  "explanation": "Your coaching message here",
+  "explanation": "Your text in the SELECTED LANGUAGE (Hindi/Tamil/etc) but with technical terms in English",
   "phantomStepDetected": boolean,
-  "misconceptionDescription": "Explain the logical flaw if detected",
-  "rubricFeedback": "CBSE-style marking feedback",
+  "misconceptionDescription": "Explanation of logical error (if any)",
+  "rubricFeedback": "CBSE step-marking/exam advice in English",
   "stressDetection": "low" | "medium" | "high",
-  "nextStepHint": "What should the student think about next?"
+  "analogyUsed": "The analogy you used to bridge the concept"
 }
 `;
 
@@ -40,38 +44,103 @@ export async function getCoachingResponse(
     parts: [{ text: h.content }]
   }));
 
+  try {
+    const response = await ai.models.generateContent({
+      model,
+      contents: [
+        ...conversationHistory,
+        { 
+          parts: [{ 
+            text: `CURRENT SUBJECT: ${subject}. 
+                   TARGET LANGUAGE: ${language}. 
+                   STUDENT MESSAGE: ${prompt}
+                   
+                   REMINDER: Generate the 'explanation' field strictly in ${language} text while keeping technical terms in English.` 
+          }] 
+        }
+      ],
+      config: {
+        systemInstruction: SYSTEM_INSTRUCTION,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            explanation: { type: Type.STRING },
+            phantomStepDetected: { type: Type.BOOLEAN },
+            misconceptionDescription: { type: Type.STRING },
+            rubricFeedback: { type: Type.STRING },
+            stressDetection: { type: Type.STRING, enum: ["low", "medium", "high"] },
+            analogyUsed: { type: Type.STRING }
+          },
+          required: ["explanation", "phantomStepDetected", "stressDetection"]
+        }
+      }
+    });
+
+    const text = response.text;
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    const cleanJson = jsonMatch ? jsonMatch[0] : text;
+    
+    return JSON.parse(cleanJson);
+  } catch (error) {
+    console.error("AI Error:", error);
+    return {
+      explanation: "I encountered a minor logic glitch. Could you rephrase your question? (Kripya apna sawal firse puchein.)",
+      phantomStepDetected: false,
+      stressDetection: "low"
+    };
+  }
+}
+
+export async function generateStudyPlan(
+  examType: string,
+  examDate: string,
+  weakSubjects: string[],
+  language: Language
+) {
+  const model = 'gemini-3-pro-preview';
+  const prompt = `Generate a 4-week NCERT study plan for a Class 12 student preparing for ${examType} on ${examDate}. 
+  The student is weak in: ${weakSubjects.join(', ')}. 
+  Output as a JSON array of modules following this schema: 
+  { modules: Array<{ week: number, subject: string, topic: string, chapter: string, priority: 'high' | 'medium' | 'low' }> }`;
+
   const response = await ai.models.generateContent({
     model,
-    contents: [
-      ...conversationHistory,
-      { parts: [{ text: `Subject: ${subject}, Language: ${language}. Student input: ${prompt}` }] }
-    ],
+    contents: prompt,
     config: {
-      systemInstruction: SYSTEM_INSTRUCTION,
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.OBJECT,
         properties: {
-          explanation: { type: Type.STRING },
-          phantomStepDetected: { type: Type.BOOLEAN },
-          misconceptionDescription: { type: Type.STRING },
-          rubricFeedback: { type: Type.STRING },
-          stressDetection: { type: Type.STRING, enum: ["low", "medium", "high"] },
-          nextStepHint: { type: Type.STRING }
+          modules: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                week: { type: Type.NUMBER },
+                subject: { type: Type.STRING },
+                topic: { type: Type.STRING },
+                chapter: { type: Type.STRING },
+                priority: { type: Type.STRING, enum: ['high', 'medium', 'low'] }
+              },
+              required: ['week', 'subject', 'topic', 'chapter', 'priority']
+            }
+          }
         },
-        required: ["explanation", "phantomStepDetected", "stressDetection"]
+        required: ['modules']
       }
     }
   });
 
   try {
-    return JSON.parse(response.text);
+    const data = JSON.parse(response.text);
+    return data.modules.map((m: any, i: number) => ({
+      ...m,
+      id: `mod-${i}`,
+      status: i === 0 ? 'current' : 'upcoming'
+    }));
   } catch (e) {
-    console.error("Failed to parse AI response:", e);
-    return {
-      explanation: response.text,
-      phantomStepDetected: false,
-      stressDetection: "low"
-    };
+    console.error("Plan generation error", e);
+    return [];
   }
 }
