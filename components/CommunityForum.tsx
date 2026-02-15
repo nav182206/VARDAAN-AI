@@ -1,46 +1,21 @@
 
-import React, { useState, useEffect } from 'react';
-import { MessageSquare, ThumbsUp, MessageCircle, Filter, Plus, User, X } from 'lucide-react';
+import React, { useState } from 'react';
+// Added Sparkles to the import list below
+import { ThumbsUp, MessageCircle, Plus, X, GraduationCap, CheckCircle2, Sparkles } from 'lucide-react';
 import { ForumPost, SUBJECTS } from '../types';
 
-const INITIAL_POSTS: ForumPost[] = [
-  {
-    id: '1',
-    author: 'Arjun P.',
-    title: 'Struggling with Integration by Parts',
-    content: "Whenever I see two functions multiplied, I get confused about which one to pick as 'u'. Any simple rule of thumb?",
-    subject: 'Maths',
-    upvotes: 12,
-    replies: 4,
-    timestamp: Date.now() - 3600000
-  },
-  {
-    id: '2',
-    author: 'Priya S.',
-    title: 'Lenz Law local analogy help!',
-    content: "Vardaan gave me a great analogy about a roommate not wanting you to open the door, but I need more examples.",
-    subject: 'Physics',
-    upvotes: 8,
-    replies: 2,
-    timestamp: Date.now() - 7200000
-  }
-];
+interface Props {
+  posts: ForumPost[];
+  onUpdatePosts: (posts: ForumPost[]) => void;
+}
 
-const CommunityForum: React.FC = () => {
-  const [posts, setPosts] = useState<ForumPost[]>(() => {
-    const saved = localStorage.getItem('vardaan_forum');
-    return saved ? JSON.parse(saved) : INITIAL_POSTS;
-  });
+const CommunityForum: React.FC<Props> = ({ posts, onUpdatePosts }) => {
   const [activeFilter, setActiveFilter] = useState<string>('All');
   const [showModal, setShowModal] = useState(false);
   const [newPost, setNewPost] = useState({ title: '', content: '', subject: 'Physics' });
 
-  useEffect(() => {
-    localStorage.setItem('vardaan_forum', JSON.stringify(posts));
-  }, [posts]);
-
   const handleUpvote = (id: string) => {
-    setPosts(prev => prev.map(p => p.id === id ? { ...p, upvotes: p.upvotes + 1 } : p));
+    onUpdatePosts(posts.map(p => p.id === id ? { ...p, upvotes: p.upvotes + 1 } : p));
   };
 
   const handleAddPost = () => {
@@ -52,10 +27,12 @@ const CommunityForum: React.FC = () => {
       content: newPost.content,
       subject: newPost.subject,
       upvotes: 0,
-      replies: 0,
-      timestamp: Date.now()
+      replyCount: 0,
+      timestamp: Date.now(),
+      teacherReplies: [],
+      isResolved: false
     };
-    setPosts([post, ...posts]);
+    onUpdatePosts([post, ...posts]);
     setShowModal(false);
     setNewPost({ title: '', content: '', subject: 'Physics' });
   };
@@ -65,17 +42,16 @@ const CommunityForum: React.FC = () => {
       <div className="flex justify-between items-center mb-10">
         <div>
           <h2 className="text-3xl font-black text-slate-800 tracking-tight">Peer Learning Circle</h2>
-          <p className="text-slate-500 font-medium">Collaborate with fellow 11th & 12th graders across Bharat.</p>
+          <p className="text-slate-500 font-medium">Collaborate and learn from verified teachers.</p>
         </div>
         <button 
           onClick={() => setShowModal(true)}
-          className="bg-indigo-600 text-white px-6 py-4 rounded-2xl font-black flex items-center gap-3 hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100"
+          className="bg-indigo-600 text-white px-6 py-4 rounded-2xl font-black flex items-center gap-3 hover:bg-indigo-700 transition-all shadow-xl"
         >
-          <Plus className="w-5 h-5" /> Ask a Question
+          <Plus className="w-5 h-5" /> Ask a Doubt
         </button>
       </div>
 
-      {/* Filter */}
       <div className="flex gap-3 mb-10 overflow-x-auto pb-4 scrollbar-hide">
         {['All', ...SUBJECTS].map((sub) => (
           <button
@@ -90,73 +66,79 @@ const CommunityForum: React.FC = () => {
         ))}
       </div>
 
-      <div className="space-y-6">
+      <div className="space-y-10">
         {posts
           .filter(p => activeFilter === 'All' || p.subject === activeFilter)
           .map((post) => (
-          <div key={post.id} className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm hover:shadow-xl hover:border-indigo-100 transition-all group">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-8 h-8 bg-slate-100 rounded-xl flex items-center justify-center font-black text-[10px] text-slate-400">
-                {post.author.charAt(0)}
+          <div key={post.id} className="space-y-4">
+            <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm hover:shadow-xl transition-all group">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 bg-slate-100 rounded-xl flex items-center justify-center font-black text-[10px] text-slate-400">
+                    {post.author.charAt(0)}
+                  </div>
+                  <span className="text-xs font-black text-slate-700">{post.author}</span>
+                  <span className="text-indigo-500 text-[10px] font-black uppercase tracking-widest px-3 py-1 bg-indigo-50 rounded-full">{post.subject}</span>
+                </div>
+                {post.isResolved && (
+                  <span className="flex items-center gap-1 text-[10px] font-black text-emerald-600 uppercase tracking-widest bg-emerald-50 px-3 py-1 rounded-full">
+                    <CheckCircle2 className="w-3 h-3" /> Resolved
+                  </span>
+                )}
               </div>
-              <span className="text-xs font-black text-slate-700">{post.author}</span>
-              <span className="text-indigo-500 text-[10px] font-black uppercase tracking-widest px-3 py-1 bg-indigo-50 rounded-full">{post.subject}</span>
-            </div>
-            <h3 className="text-xl font-black text-slate-800 mb-2 group-hover:text-indigo-600 transition-colors">{post.title}</h3>
-            <p className="text-slate-500 leading-relaxed mb-6">{post.content}</p>
-            <div className="flex gap-6 pt-6 border-t border-slate-50">
-              <button onClick={() => handleUpvote(post.id)} className="flex items-center gap-2 text-slate-400 hover:text-indigo-600 transition-all">
-                <ThumbsUp className="w-4 h-4" /> <span className="text-xs font-black">{post.upvotes}</span>
-              </button>
-              <div className="flex items-center gap-2 text-slate-400">
-                <MessageCircle className="w-4 h-4" /> <span className="text-xs font-black">{post.replies} Replies</span>
+              <h3 className="text-xl font-black text-slate-800 mb-2 group-hover:text-indigo-600 transition-colors">{post.title}</h3>
+              <p className="text-slate-500 leading-relaxed mb-6">{post.content}</p>
+              <div className="flex gap-6 pt-6 border-t border-slate-50">
+                <button onClick={() => handleUpvote(post.id)} className="flex items-center gap-2 text-slate-400 hover:text-indigo-600 transition-all">
+                  <ThumbsUp className="w-4 h-4" /> <span className="text-xs font-black">{post.upvotes}</span>
+                </button>
+                <div className="flex items-center gap-2 text-slate-400">
+                  <MessageCircle className="w-4 h-4" /> <span className="text-xs font-black">{post.replyCount} Replies</span>
+                </div>
               </div>
             </div>
+
+            {/* Teacher Replies Display */}
+            {post.teacherReplies.map((reply) => (
+              <div key={reply.id} className="ml-12 bg-gradient-to-br from-emerald-50 to-white p-6 rounded-[2rem] border-l-4 border-emerald-500 shadow-md relative overflow-hidden">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="p-1.5 bg-emerald-600 text-white rounded-lg shadow-sm">
+                    <GraduationCap className="w-4 h-4" />
+                  </div>
+                  <span className="text-xs font-black text-emerald-900">{reply.author}</span>
+                  <span className="text-[9px] font-black uppercase tracking-widest text-emerald-600 bg-white/60 px-2 py-0.5 rounded-full border border-emerald-100">Verified Educator</span>
+                </div>
+                <p className="text-sm text-slate-700 leading-relaxed font-medium">{reply.content}</p>
+                <div className="absolute top-0 right-0 p-4 opacity-5">
+                   <Sparkles className="w-16 h-16 text-emerald-600" />
+                </div>
+              </div>
+            ))}
           </div>
         ))}
       </div>
 
-      {/* Post Modal */}
       {showModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-md p-6">
-          <div className="bg-white w-full max-w-xl rounded-[3rem] p-10 shadow-2xl relative animate-in zoom-in-95 duration-200">
+          <div className="bg-white w-full max-w-xl rounded-[3rem] p-10 shadow-2xl relative">
             <button onClick={() => setShowModal(false)} className="absolute top-8 right-8 p-2 hover:bg-slate-100 rounded-full"><X /></button>
-            <h3 className="text-2xl font-black text-slate-800 mb-8">Post to Community</h3>
+            <h3 className="text-2xl font-black text-slate-800 mb-8">Post a Doubt</h3>
             <div className="space-y-6">
               <div>
-                <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest block mb-2">Subject</label>
-                <select 
-                  className="w-full p-4 bg-slate-50 border rounded-2xl font-bold outline-none"
-                  value={newPost.subject}
-                  onChange={e => setNewPost({...newPost, subject: e.target.value})}
-                >
+                <label className="text-[10px] font-black uppercase text-slate-400 block mb-2">Subject</label>
+                <select className="w-full p-4 bg-slate-50 border rounded-2xl font-bold" value={newPost.subject} onChange={e => setNewPost({...newPost, subject: e.target.value})}>
                   {SUBJECTS.map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
               <div>
-                <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest block mb-2">Topic Title</label>
-                <input 
-                  className="w-full p-4 bg-slate-50 border rounded-2xl font-bold outline-none"
-                  placeholder="e.g. Help with Gauss's Law"
-                  value={newPost.title}
-                  onChange={e => setNewPost({...newPost, title: e.target.value})}
-                />
+                <label className="text-[10px] font-black uppercase text-slate-400 block mb-2">Topic Title</label>
+                <input className="w-full p-4 bg-slate-50 border rounded-2xl font-bold" placeholder="Help with Gauss's Law" value={newPost.title} onChange={e => setNewPost({...newPost, title: e.target.value})} />
               </div>
               <div>
-                <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest block mb-2">Details</label>
-                <textarea 
-                  className="w-full p-4 bg-slate-50 border rounded-2xl font-bold outline-none h-32 resize-none"
-                  placeholder="Explain your doubt or insight..."
-                  value={newPost.content}
-                  onChange={e => setNewPost({...newPost, content: e.target.value})}
-                />
+                <label className="text-[10px] font-black uppercase text-slate-400 block mb-2">Details</label>
+                <textarea className="w-full p-4 bg-slate-50 border rounded-2xl font-bold h-32 resize-none" placeholder="Explain your doubt..." value={newPost.content} onChange={e => setNewPost({...newPost, content: e.target.value})} />
               </div>
-              <button 
-                onClick={handleAddPost}
-                className="w-full bg-indigo-600 text-white py-5 rounded-[2rem] font-black shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition-all"
-              >
-                Post Question
-              </button>
+              <button onClick={handleAddPost} className="w-full bg-indigo-600 text-white py-5 rounded-[2rem] font-black shadow-xl">Post Question</button>
             </div>
           </div>
         </div>

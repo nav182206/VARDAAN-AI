@@ -56,6 +56,14 @@ export interface Badge {
   unlocked: boolean;
 }
 
+export interface ForumReply {
+  id: string;
+  author: string;
+  content: string;
+  isTeacher: boolean;
+  timestamp: number;
+}
+
 export interface ForumPost {
   id: string;
   author: string;
@@ -63,8 +71,10 @@ export interface ForumPost {
   content: string;
   subject: string;
   upvotes: number;
-  replies: number;
+  replyCount: number;
   timestamp: number;
+  teacherReplies: ForumReply[];
+  isResolved?: boolean;
 }
 
 export interface UserStats {
