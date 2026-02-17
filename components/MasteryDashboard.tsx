@@ -12,7 +12,11 @@ const mockData: TopicMastery[] = [
   { name: 'Mechanics', mastery: 30, status: 'learning' },
 ];
 
-const MasteryDashboard: React.FC = () => {
+interface Props {
+  onStartLesson?: (topic: string, subject: string) => void;
+}
+
+const MasteryDashboard: React.FC<Props> = ({ onStartLesson }) => {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 p-2">
       {/* Knowledge Graph Layer */}
@@ -66,7 +70,10 @@ const MasteryDashboard: React.FC = () => {
               <p className="text-emerald-700 text-sm mb-4 leading-relaxed">
                 You've cleared Linear Kinematics. Bridging to Angular motion will unlock 15% more Physics mastery.
               </p>
-              <button className="flex items-center gap-2 text-xs font-black text-white bg-emerald-600 px-5 py-2.5 rounded-xl hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-200">
+              <button 
+                onClick={() => onStartLesson?.('Rotational Dynamics', 'Physics')}
+                className="flex items-center gap-2 text-xs font-black text-white bg-emerald-600 px-5 py-2.5 rounded-xl hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-200"
+              >
                 Begin Bridge Lesson <ArrowRight className="w-4 h-4" />
               </button>
             </div>

@@ -1,13 +1,18 @@
 
 import React, { useState } from 'react';
-// Added Sparkles to the import list below
-import { ThumbsUp, MessageCircle, Plus, X, GraduationCap, CheckCircle2, Sparkles } from 'lucide-react';
-import { ForumPost, SUBJECTS } from '../types';
+import { ThumbsUp, MessageCircle, Plus, X, GraduationCap, CheckCircle2, Sparkles, Users2, ArrowRight } from 'lucide-react';
+import { ForumPost, SUBJECTS, DoubtPool } from '../types';
 
 interface Props {
   posts: ForumPost[];
   onUpdatePosts: (posts: ForumPost[]) => void;
 }
+
+const MOCK_POOLS: DoubtPool[] = [
+  { id: 'p1', subject: 'Maths', topic: 'Calculus - Limits', studentCount: 8, description: 'Logic gap: Confusing infinity with a large number.' },
+  { id: 'p2', subject: 'Physics', topic: 'Gauss Law', studentCount: 5, description: 'Conceptual bottleneck: Surface integral vs volume integral.' },
+  { id: 'p3', subject: 'Computer Science', topic: 'Recursion Depth', studentCount: 12, description: 'Phantom step: Misunderstanding base cases in recursive stack.' },
+];
 
 const CommunityForum: React.FC<Props> = ({ posts, onUpdatePosts }) => {
   const [activeFilter, setActiveFilter] = useState<string>('All');
@@ -39,6 +44,33 @@ const CommunityForum: React.FC<Props> = ({ posts, onUpdatePosts }) => {
 
   return (
     <div className="max-w-4xl mx-auto p-10 animate-in fade-in duration-500">
+      {/* Doubt Pooling Section */}
+      <div className="mb-12">
+        <div className="flex items-center gap-3 mb-6">
+           <div className="p-2 bg-indigo-600 rounded-xl text-white">
+             <Sparkles className="w-5 h-5" />
+           </div>
+           <h3 className="text-xl font-black text-slate-800">AI Doubt-Pooling Pods</h3>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+           {MOCK_POOLS.map(pool => (
+             <div key={pool.id} className="bg-indigo-50 border border-indigo-100 p-6 rounded-[2rem] hover:shadow-lg transition-all cursor-pointer group">
+                <div className="flex justify-between items-start mb-2">
+                   <span className="text-[10px] font-black uppercase text-indigo-600 bg-white px-3 py-1 rounded-full shadow-sm">{pool.subject}</span>
+                   <div className="flex items-center gap-1 text-[10px] font-black text-slate-500">
+                      <Users2 className="w-3 h-3" /> {pool.studentCount} Peers stuck
+                   </div>
+                </div>
+                <h4 className="font-black text-indigo-900 mb-2">{pool.topic}</h4>
+                <p className="text-xs text-indigo-700/70 mb-4 line-clamp-2">{pool.description}</p>
+                <button className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-indigo-600 group-hover:gap-4 transition-all">
+                   Join Study Pod <ArrowRight className="w-4 h-4" />
+                </button>
+             </div>
+           ))}
+        </div>
+      </div>
+
       <div className="flex justify-between items-center mb-10">
         <div>
           <h2 className="text-3xl font-black text-slate-800 tracking-tight">Peer Learning Circle</h2>
@@ -132,11 +164,11 @@ const CommunityForum: React.FC<Props> = ({ posts, onUpdatePosts }) => {
               </div>
               <div>
                 <label className="text-[10px] font-black uppercase text-slate-400 block mb-2">Topic Title</label>
-                <input className="w-full p-4 bg-slate-50 border rounded-2xl font-bold" placeholder="Help with Gauss's Law" value={newPost.title} onChange={e => setNewPost({...newPost, title: e.target.value})} />
+                <input className="w-full p-4 bg-slate-50 border rounded-2xl font-bold" placeholder="Explain your doubt..." value={newPost.title} onChange={e => setNewPost({...newPost, title: e.target.value})} />
               </div>
               <div>
                 <label className="text-[10px] font-black uppercase text-slate-400 block mb-2">Details</label>
-                <textarea className="w-full p-4 bg-slate-50 border rounded-2xl font-bold h-32 resize-none" placeholder="Explain your doubt..." value={newPost.content} onChange={e => setNewPost({...newPost, content: e.target.value})} />
+                <textarea className="w-full p-4 bg-slate-50 border rounded-2xl font-bold h-32 resize-none" placeholder="Explain your doubt in detail..." value={newPost.content} onChange={e => setNewPost({...newPost, content: e.target.value})} />
               </div>
               <button onClick={handleAddPost} className="w-full bg-indigo-600 text-white py-5 rounded-[2rem] font-black shadow-xl">Post Question</button>
             </div>

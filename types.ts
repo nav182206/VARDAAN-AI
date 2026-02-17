@@ -21,6 +21,27 @@ export interface ChatMessage {
   rubricFeedback?: string;
   stressLevel?: 'low' | 'medium' | 'high';
   analogyUsed?: string;
+  conceptNote?: string[];
+}
+
+export interface VaultItem {
+  id: string;
+  subject: string;
+  topic: string;
+  content: string[];
+  misconception?: string;
+  timestamp: number;
+}
+
+export interface SharedResource {
+  id: string;
+  name: string;
+  subject: string;
+  chapter: string;
+  size: string;
+  type: 'PDF' | 'DOCX' | 'JSON';
+  status: 'Indexed' | 'Processing';
+  timestamp: number;
 }
 
 export interface TopicMastery {
@@ -77,6 +98,14 @@ export interface ForumPost {
   isResolved?: boolean;
 }
 
+export interface DoubtPool {
+  id: string;
+  subject: string;
+  topic: string;
+  studentCount: number;
+  description: string;
+}
+
 export interface UserStats {
   points: number;
   level: number;
@@ -95,8 +124,10 @@ export interface Notification {
 export interface AppState {
   user: User | null;
   language: Language;
-  selectedSubject: 'Physics' | 'Chemistry' | 'Maths' | 'Biology';
+  selectedSubject: 'Physics' | 'Chemistry' | 'Maths' | 'Biology' | 'Computer Science' | 'English Literature';
   messages: ChatMessage[];
+  vault: VaultItem[];
+  sharedResources: SharedResource[];
   isThinking: boolean;
   stressWarning: boolean;
   stressLevel: 'low' | 'medium' | 'high';
@@ -107,4 +138,4 @@ export interface AppState {
 
 export const SUPPORTED_LANGUAGES: Language[] = ['English', 'Hindi', 'Tamil', 'Telugu', 'Marathi', 'Bengali', 'Kannada'];
 
-export const SUBJECTS = ['Physics', 'Chemistry', 'Maths', 'Biology'] as const;
+export const SUBJECTS = ['Physics', 'Chemistry', 'Maths', 'Biology', 'Computer Science', 'English Literature'] as const;
