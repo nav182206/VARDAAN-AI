@@ -1,20 +1,31 @@
 
 import React, { useState, useEffect } from 'react';
 import { Search, Library, BookOpen, Trash2, Filter, Star, Clock, FileText, ChevronRight, BrainCircuit, Globe, X, Download, Maximize2, ZoomIn, ZoomOut, Loader2, Info, Book } from 'lucide-react';
-import { VaultItem, SUBJECTS, SharedResource } from '../types';
+import { VaultItem, SUBJECTS, SharedResource, Language } from '../types';
+import { getChapterSummary, getDoubtExplanation } from '../services/geminiService';
 
 interface Props {
   items: VaultItem[];
   sharedResources: SharedResource[];
   onDeleteItem: (id: string) => void;
+  onAddItem: (item: VaultItem) => void;
+  language: Language;
 }
 
-const KnowledgeVault: React.FC<Props> = ({ items, sharedResources, onDeleteItem }) => {
+const KnowledgeVault: React.FC<Props> = ({ items, sharedResources, onDeleteItem, onAddItem, language }) => {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<string>('All');
   const [tab, setTab] = useState<'personal' | 'official'>('official');
   const [viewingResource, setViewingResource] = useState<SharedResource | null>(null);
-  const [isPdfLoading, setIsPdfLoading] = useState(false);
+    const [isPdfLoading, setIsPdfLoading] = useState(false);
+  const [summarySubject, setSummarySubject] = useState<string>(SUBJECTS[0]);
+  const [summaryChapter, setSummaryChapter] = useState('');
+  const [isSummarizing, setIsSummarizing] = useState(false);
+    const [summaryResult, setSummaryResult] = useState<string[] | null>(null);
+  const [doubt, setDoubt] = useState('');
+  const [doubtSubject, setDoubtSubject] = useState<string>(SUBJECTS[0]);
+  const [isExplaining, setIsExplaining] = useState(false);
+  const [explanationResult, setExplanationResult] = useState<string[] | null>(null);
 
   const handleOpenPdf = (resource: SharedResource) => {
     setIsPdfLoading(true);
@@ -30,12 +41,58 @@ const KnowledgeVault: React.FC<Props> = ({ items, sharedResources, onDeleteItem 
     return matchesSearch && matchesFilter;
   });
 
-  const filteredShared = sharedResources.filter(item => {
+    const filteredShared = sharedResources.filter(item => {
     const matchesSearch = item.name.toLowerCase().includes(search.toLowerCase()) || 
                           item.chapter.toLowerCase().includes(search.toLowerCase());
     const matchesFilter = filter === 'All' || item.subject === filter;
     return matchesSearch && matchesFilter;
   });
+
+  const handleGenerateSummary = async () => {
+    if (!summaryChapter.trim()) return;
+    setIsSummarizing(true);
+    setSummaryResult(null);
+    const result = await getChapterSummary(summarySubject, summaryChapter, language);
+    setSummaryResult(result);
+    setIsSummarizing(false);
+  };
+
+  const handleSaveSummary = () => {
+    if (!summaryResult) return;
+    const newItem: VaultItem = {
+      id: Date.now().toString(),
+      subject: summarySubject,
+      topic: `Summary: ${summaryChapter}`,
+      content: summaryResult,
+      timestamp: Date.now(),
+    };
+    onAddItem(newItem);
+    setSummaryResult(null);
+        setSummaryChapter('');
+  };
+
+  const handleGenerateExplanation = async () => {
+    if (!doubt.trim()) return;
+    setIsExplaining(true);
+    setExplanationResult(null);
+    const result = await getDoubtExplanation(doubt, doubtSubject, language);
+    setExplanationResult(result);
+    setIsExplaining(false);
+  };
+
+  const handleSaveExplanation = () => {
+    if (!explanationResult) return;
+    const newItem: VaultItem = {
+      id: Date.now().toString(),
+      subject: doubtSubject,
+      topic: `Doubt: ${doubt.substring(0, 30)}...`,
+      content: explanationResult,
+      timestamp: Date.now(),
+    };
+    onAddItem(newItem);
+    setExplanationResult(null);
+    setDoubt('');
+  };
 
   return (
     <div className="max-w-6xl mx-auto p-10 space-y-10 animate-in fade-in duration-700">
@@ -59,6 +116,106 @@ const KnowledgeVault: React.FC<Props> = ({ items, sharedResources, onDeleteItem 
             />
           </div>
         </div>
+      </div>
+
+            <div className="bg-white rounded-[3rem] p-10 border border-slate-100 shadow-sm w-full">
+        <h3 className="text-2xl font-black text-slate-800 mb-6 flex items-center gap-3"><BrainCircuit className="w-7 h-7 text-indigo-600" /> AI Chapter Summarizer</h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
+          <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-6">
+            <div>
+              <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Subject</label>
+              <select 
+                value={summarySubject} 
+                onChange={(e) => setSummarySubject(e.target.value)} 
+                className="mt-2 w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold focus:ring-4 focus:ring-indigo-50 focus:border-indigo-600 outline-none transition-all"
+              >
+                {SUBJECTS.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Chapter Name</label>
+              <input 
+                type="text" 
+                placeholder="e.g., Thermodynamics" 
+                value={summaryChapter} 
+                onChange={(e) => setSummaryChapter(e.target.value)} 
+                className="mt-2 w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold focus:ring-4 focus:ring-indigo-50 focus:border-indigo-600 outline-none transition-all"
+              />
+            </div>
+          </div>
+          <button 
+            onClick={handleGenerateSummary} 
+            disabled={isSummarizing || !summaryChapter.trim()} 
+            className="w-full bg-slate-900 text-white px-8 py-5 rounded-2xl text-sm font-black uppercase tracking-widest hover:bg-indigo-600 transition-all disabled:opacity-50 flex items-center justify-center gap-3"
+          >
+            {isSummarizing ? <><Loader2 className="w-5 h-5 animate-spin" /> Generating...</> : 'Generate Notes'}
+          </button>
+        </div>
+        {summaryResult && (
+          <div className="mt-8 p-8 bg-indigo-50 rounded-[2.5rem] border-2 border-indigo-100 animate-in fade-in duration-500">
+            <h4 className="text-lg font-black text-indigo-900 mb-4">Generated Summary:</h4>
+            <ul className="space-y-3">
+              {summaryResult.map((point, idx) => (
+                <li key={idx} className="text-sm font-bold text-slate-800 flex gap-3">
+                  <span className="text-indigo-400 mt-1">•</span> {point}
+                </li>
+              ))}
+            </ul>
+            <div className="mt-8 pt-6 border-t border-indigo-200 flex justify-end">
+              <button onClick={handleSaveSummary} className="bg-indigo-600 text-white px-6 py-3 rounded-xl text-xs font-black uppercase hover:bg-indigo-700 transition-all">Save to My Notes</button>
+            </div>
+          </div>
+        )}
+      </div>
+
+            <div className="bg-white rounded-[3rem] p-10 border border-slate-100 shadow-sm w-full mt-10">
+        <h3 className="text-2xl font-black text-slate-800 mb-6 flex items-center gap-3"><Lightbulb className="w-7 h-7 text-amber-500" /> AI Doubt Solver</h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
+          <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-6">
+            <div>
+              <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Subject</label>
+              <select 
+                value={doubtSubject} 
+                onChange={(e) => setDoubtSubject(e.target.value)} 
+                className="mt-2 w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold focus:ring-4 focus:ring-amber-50 focus:border-amber-500 outline-none transition-all"
+              >
+                {SUBJECTS.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Your Doubt</label>
+              <input 
+                type="text" 
+                placeholder="e.g., Why is the sky blue?" 
+                value={doubt} 
+                onChange={(e) => setDoubt(e.target.value)} 
+                className="mt-2 w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold focus:ring-4 focus:ring-amber-50 focus:border-amber-500 outline-none transition-all"
+              />
+            </div>
+          </div>
+          <button 
+            onClick={handleGenerateExplanation} 
+            disabled={isExplaining || !doubt.trim()} 
+            className="w-full bg-amber-500 text-white px-8 py-5 rounded-2xl text-sm font-black uppercase tracking-widest hover:bg-amber-600 transition-all disabled:opacity-50 flex items-center justify-center gap-3"
+          >
+            {isExplaining ? <><Loader2 className="w-5 h-5 animate-spin" /> Explaining...</> : 'Get Explanation'}
+          </button>
+        </div>
+        {explanationResult && (
+          <div className="mt-8 p-8 bg-amber-50 rounded-[2.5rem] border-2 border-amber-100 animate-in fade-in duration-500">
+            <h4 className="text-lg font-black text-amber-900 mb-4">Generated Explanation:</h4>
+            <div className="space-y-4">
+              {explanationResult.map((point, idx) => (
+                <div key={idx} className="text-sm font-bold text-slate-800 leading-relaxed">
+                  {point}
+                </div>
+              ))}
+            </div>
+            <div className="mt-8 pt-6 border-t border-amber-200 flex justify-end">
+              <button onClick={handleSaveExplanation} className="bg-amber-600 text-white px-6 py-3 rounded-xl text-xs font-black uppercase hover:bg-amber-700 transition-all">Save to My Notes</button>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">

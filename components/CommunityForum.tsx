@@ -1,5 +1,6 @@
 
 import React, { useState } from 'react';
+import CommunityLeaderboard from './CommunityLeaderboard';
 import { ThumbsUp, MessageCircle, Plus, X, GraduationCap, CheckCircle2, Sparkles, Users2, ArrowRight } from 'lucide-react';
 import { ForumPost, SUBJECTS, DoubtPool } from '../types';
 
@@ -43,7 +44,9 @@ const CommunityForum: React.FC<Props> = ({ posts, onUpdatePosts }) => {
   };
 
   return (
-    <div className="max-w-4xl mx-auto p-10 animate-in fade-in duration-500">
+        <div className="max-w-7xl mx-auto p-10 animate-in fade-in duration-500">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
+        <div className="lg:col-span-2">
       {/* Doubt Pooling Section */}
       <div className="mb-12">
         <div className="flex items-center gap-3 mb-6">
@@ -98,7 +101,7 @@ const CommunityForum: React.FC<Props> = ({ posts, onUpdatePosts }) => {
         ))}
       </div>
 
-      <div className="space-y-10">
+                  <div className="space-y-10">
         {posts
           .filter(p => activeFilter === 'All' || p.subject === activeFilter)
           .map((post) => (
@@ -148,6 +151,12 @@ const CommunityForum: React.FC<Props> = ({ posts, onUpdatePosts }) => {
             ))}
           </div>
         ))}
+      </div>
+
+        </div>
+        <div className="lg:col-span-1">
+          <CommunityLeaderboard />
+        </div>
       </div>
 
       {showModal && (

@@ -2,7 +2,7 @@
 import { GoogleGenAI, Type, Modality } from "@google/genai";
 import { Language, ChatMessage } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
 
 const SYSTEM_INSTRUCTION = `
 You are Vardaan AI, an elite Socratic academic coach for Class 11-12 NCERT India.
@@ -19,15 +19,17 @@ EXAMPLES:
 
 CONSTRAINTS:
 1. RESPONSE STYLE: Socratic. Ask ONE targeted question to make the student realize their logic gap.
-2. NO CRICKET BIAS: Do not use cricket analogies unless the user is a sports fanatic. Use real-world engineering, medical, or computational examples.
-3. STRUCTURE: provide a "Conceptual Note" (bullet points) and a "Scientific Example."
-4. LANGUAGE: Respond ONLY in {language}. Use English for technical terms.
-5. VOICE-TO-CONCEPT: If the user speaks casually or in a native dialect, parse their intent into precise NCERT technical terminology.
+2. SUBJECT FIDELITY: All explanations, examples, and concepts MUST strictly relate to the provided SUBJECT. Do not use examples from other subjects (e.g., no physics examples for a math problem).
+3. NO CRICKET BIAS: Do not use cricket analogies unless the user is a sports fanatic. Use real-world engineering, medical, or computational examples relevant to the subject.
+4. STRUCTURE: provide a "Conceptual Note" (bullet points) and a "Scientific Example."
+5. LANGUAGE: Respond ONLY in {language}. Use English for technical terms.
+6. VOICE-TO-CONCEPT: If the user speaks casually or in a native dialect, parse their intent into precise NCERT technical terminology.
 
 FORMAT (JSON):
 {
-  "explanation": "concise socratic guidance",
-  "conceptualExample": "A scientific/real-world example or proper notes",
+  "directAnswer": "A concise, to-the-point answer to the user's question.",
+  "socraticExplanation": "Deeper socratic guidance to lead the student to understanding.",
+  "conceptualExample": "A scientific/real-world example or proper notes to support the explanation.",
   "phantomStepDetected": boolean,
   "misconceptionDescription": "The specific logical error identified",
   "conceptNote": ["Core point 1", "Core point 2"],
@@ -36,51 +38,102 @@ FORMAT (JSON):
 `;
 
 export async function getCoachingResponse(
-  prompt: string, 
-  history: ChatMessage[], 
-  language: Language, 
-  subject: string
+  prompt: string,
+  history: ChatMessage[],
+  language: Language,
+  subject: string,
+  attachment?: { data: string; mimeType: string }
 ) {
-  const model = 'gemini-3-flash-preview';
-  
-  const conversationHistory = history.slice(-5).map(h => ({
-    role: h.role === 'user' ? 'user' : 'model',
-    parts: [{ text: h.content }]
-  }));
+  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+  const conversationHistory = history.slice(-5).map(h => {
+    const parts = [];
+    let messageContent = h.content;
+    if (h.role === 'assistant' && h.directAnswer) {
+        messageContent = `${h.directAnswer}\n\n${h.content}`;
+    }
+    if (messageContent) {
+        parts.push({ text: messageContent });
+    }
+    if (h.attachment) {
+        parts.push({ inlineData: { data: h.attachment.data, mimeType: h.attachment.mimeType } });
+    }
+    if (parts.length === 0) {
+        parts.push({ text: "" });
+    }
+    return {
+        role: h.role === 'user' ? 'user' : 'model',
+        parts: parts
+    };
+  });
 
   try {
-    const response = await ai.models.generateContent({
-      model,
-      contents: [
-        ...conversationHistory,
-        { parts: [{ text: `SUBJECT: ${subject}. LANG: ${language}. USER_MESSAGE: ${prompt}` }] }
-      ],
-      config: {
-        systemInstruction: SYSTEM_INSTRUCTION.replace(/{language}/g, language),
-        responseMimeType: "application/json",
-        thinkingConfig: { thinkingBudget: 0 },
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            explanation: { type: Type.STRING },
-            conceptualExample: { type: Type.STRING },
-            phantomStepDetected: { type: Type.BOOLEAN },
-            misconceptionDescription: { type: Type.STRING },
-            conceptNote: { type: Type.ARRAY, items: { type: Type.STRING } },
-            stressDetection: { type: Type.STRING, enum: ["low", "medium", "high"] }
-          },
-          required: ["explanation", "stressDetection", "conceptNote", "conceptualExample"]
-        }
-      }
-    });
+    let responseText: string;
 
-    return JSON.parse(response.text);
+    if (attachment) {
+      const modelName = 'gemini-2.5-flash-image';
+      const userParts = [
+        { inlineData: { data: attachment.data, mimeType: attachment.mimeType } },
+        { text: `SUBJECT: ${subject}. LANG: ${language}. USER_MESSAGE: ${prompt}. IMPORTANT: Respond in the JSON format specified in the system instructions.` }
+      ];
+
+      const response = await ai.models.generateContent({
+        model: modelName,
+        contents: [...conversationHistory, { parts: userParts }],
+        config: {
+          systemInstruction: SYSTEM_INSTRUCTION.replace(/{language}/g, language),
+        }
+      });
+      responseText = response.text;
+    } else {
+      const modelName = 'gemini-3-flash-preview';
+      const userParts = [{ text: `SUBJECT: ${subject}. LANG: ${language}. USER_MESSAGE: ${prompt}` }];
+      
+      const response = await ai.models.generateContent({
+        model: modelName,
+        contents: [...conversationHistory, { parts: userParts }],
+        config: {
+          systemInstruction: SYSTEM_INSTRUCTION.replace(/{language}/g, language),
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              directAnswer: { type: Type.STRING },
+              socraticExplanation: { type: Type.STRING },
+              conceptualExample: { type: Type.STRING },
+              phantomStepDetected: { type: Type.BOOLEAN },
+              misconceptionDescription: { type: Type.STRING },
+              conceptNote: { type: Type.ARRAY, items: { type: Type.STRING } },
+              stressDetection: { type: Type.STRING, enum: ["low", "medium", "high"] }
+            },
+            required: ["directAnswer", "socraticExplanation", "stressDetection", "conceptNote", "conceptualExample"]
+          }
+        }
+      });
+      responseText = response.text;
+    }
+
+    try {
+        const cleanedText = responseText.replace(/^```json\n?/, '').replace(/```$/, '');
+        return JSON.parse(cleanedText);
+    } catch (parseError) {
+        console.error("Failed to parse AI JSON response:", parseError);
+        return {
+            directAnswer: "Response from AI:",
+            socraticExplanation: responseText,
+            conceptualExample: "",
+            conceptNote: [],
+            phantomStepDetected: false,
+            stressDetection: "low"
+        };
+    }
   } catch (error) {
     console.error("AI Error:", error);
     return {
-      explanation: "Connectivity glitch. Let's re-analyze that thought. (Kuch takneeki dikkat hai.)",
-      conceptualExample: "Logic is the foundation of all subjects.",
-      conceptNote: ["Check connection", "Retry"],
+      directAnswer: "A small glitch occurred.",
+      socraticExplanation: "There was a temporary issue connecting to the AI. Please try sending your message again.",
+      conceptualExample: "Connectivity is key.",
+      conceptNote: ["Retry your request"],
       phantomStepDetected: false,
       stressDetection: "low"
     };
@@ -88,6 +141,7 @@ export async function getCoachingResponse(
 }
 
 export async function getStressSupport(stressLevel: string, subject: string, language: string) {
+  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
   const model = 'gemini-3-flash-preview';
   const prompt = `Affirmation for a student studying ${subject} at ${stressLevel} stress. Language: ${language}. One sentence affirmation, one sentence tip.`;
 
@@ -114,6 +168,7 @@ export async function getStressSupport(stressLevel: string, subject: string, lan
 }
 
 export async function getBreathingCue(text: string) {
+  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
   try {
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
@@ -133,12 +188,150 @@ export async function getBreathingCue(text: string) {
   }
 }
 
+export async function getSmartGoals(goal: string, targetDate: string, language: Language) {
+  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  const model = 'gemini-3-flash-preview';
+  const prompt = `As an expert academic advisor, break down the following high-level goal into smaller, manageable milestones. The student wants to achieve: "${goal}" by ${targetDate}. The milestones should be specific, measurable, achievable, relevant, and time-bound (SMART). The response should be in ${language}. Format the output as a JSON object with a single key "milestones", which is an array of objects. Each object should have "milestone" (a string) and "status" (a string, initially "pending").`;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: model,
+      contents: [{ parts: [{ text: prompt }] }],
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            milestones: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  milestone: { type: Type.STRING },
+                  status: { type: Type.STRING },
+                },
+                required: ["milestone", "status"]
+              }
+            },
+          },
+          required: ["milestones"]
+        }
+      }
+    });
+
+    const parsed = JSON.parse(response.text);
+    return parsed.milestones;
+  } catch (error) {
+    console.error("AI Smart Goals Error:", error);
+    return [{ milestone: "An error occurred while generating your smart goals. Please try again.", status: 'error' }];
+  }
+}
+
+export async function getDoubtExplanation(doubt: string, subject: string, language: Language) {
+  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  const model = 'gemini-3-flash-preview';
+  const prompt = `As an expert tutor for ${subject}, provide a clear, step-by-step explanation for the following doubt: "${doubt}". Break down complex concepts into simple, easy-to-understand steps. The explanation should be in ${language}. Format the output as a JSON object with a single key "explanation" which is an array of strings, where each string is a paragraph or a step in the explanation.`;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: model,
+      contents: [{ parts: [{ text: prompt }] }],
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            explanation: { type: Type.ARRAY, items: { type: Type.STRING } },
+          },
+          required: ["explanation"]
+        }
+      }
+    });
+
+    const parsed = JSON.parse(response.text);
+    return parsed.explanation;
+  } catch (error) {
+    console.error("AI Doubt Explanation Error:", error);
+    return ["An error occurred while generating the explanation. Please try again."];
+  }
+}
+
+export async function getChapterSummary(subject: string, chapter: string, language: Language) {
+  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  const model = 'gemini-3-flash-preview';
+  const prompt = `Generate a detailed, well-structured summary for the chapter titled "${chapter}" in the subject of ${subject}. The summary should be in ${language} and include key concepts, important definitions, and critical formulas. Format the output as a JSON object with a single key "summary" which is an array of strings, where each string is a key point or paragraph.`;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: model,
+      contents: [{ parts: [{ text: prompt }] }],
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            summary: { type: Type.ARRAY, items: { type: Type.STRING } },
+          },
+          required: ["summary"]
+        }
+      }
+    });
+
+    const parsed = JSON.parse(response.text);
+    return parsed.summary;
+  } catch (error) {
+    console.error("AI Summary Error:", error);
+    return ["An error occurred while generating the summary. Please try again."];
+  }
+}
+
+export async function generatePracticeTest(subject: string, topic: string, language: Language) {
+  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  const model = 'gemini-3-flash-preview';
+  const prompt = `Generate a 5-question multiple-choice practice test on the topic "${topic}" in the subject of ${subject}. The questions should be challenging and relevant to the NCERT curriculum. The response should be in ${language}. Format the output as a JSON object with a single key "questions", which is an array of objects. Each object should have "question" (a string), "options" (an array of 4 strings), and "correctAnswer" (a string).`;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: model,
+      contents: [{ parts: [{ text: prompt }] }],
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            questions: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  question: { type: Type.STRING },
+                  options: { type: Type.ARRAY, items: { type: Type.STRING } },
+                  correctAnswer: { type: Type.STRING },
+                },
+                required: ["question", "options", "correctAnswer"]
+              }
+            },
+          },
+          required: ["questions"]
+        }
+      }
+    });
+
+    const parsed = JSON.parse(response.text);
+    return parsed.questions;
+  } catch (error) {
+    console.error("AI Practice Test Error:", error);
+    return [];
+  }
+}
+
 export async function generateStudyPlan(
   examType: string,
   examDate: string,
   weakSubjects: string[],
   language: Language
 ) {
+  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
   const model = 'gemini-3-flash-preview';
   const prompt = `Class 12 plan for ${examType}. Date: ${examDate}. Weak: ${weakSubjects.join(', ')}. Include sections for all subjects including English and Computer Science.`;
 
@@ -178,5 +371,42 @@ export async function generateStudyPlan(
     }));
   } catch (e) {
     return [];
+  }
+}
+
+export async function getVideoExplanation(prompt: string, aspectRatio: '16:9' | '9:16') {
+  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+  try {
+    let operation = await ai.models.generateVideos({
+      model: 'veo-3.1-fast-generate-preview',
+      prompt: `Create a short, engaging video explanation for the following concept: ${prompt}`,
+      config: {
+        numberOfVideos: 1,
+        resolution: '720p',
+        aspectRatio: aspectRatio
+      }
+    });
+
+    while (!operation.done) {
+      await new Promise(resolve => setTimeout(resolve, 10000));
+      operation = await ai.operations.getVideosOperation({ operation: operation });
+    }
+
+    const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
+    if (downloadLink) {
+      const response = await fetch(downloadLink, {
+        method: 'GET',
+        headers: {
+          'x-goog-api-key': process.env.GEMINI_API_KEY!,
+        },
+      });
+      const blob = await response.blob();
+      return URL.createObjectURL(blob);
+    }
+    return null;
+  } catch (error) {
+    console.error("Video Generation Error:", error);
+    return null;
   }
 }

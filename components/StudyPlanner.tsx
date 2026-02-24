@@ -1,5 +1,6 @@
 
 import React, { useState } from 'react';
+import SmartGoals from './SmartGoals';
 import { Calendar, CheckCircle2, Circle, Clock, Target, ArrowRight, Brain, Sparkles, AlertCircle } from 'lucide-react';
 import { StudyPlan, StudyModule, Language, SUBJECTS } from '../types';
 import { generateStudyPlan } from '../services/geminiService';
@@ -88,8 +89,10 @@ const StudyPlanner: React.FC<Props> = ({ plan, language, onPlanCreated, onStartS
     );
   }
 
-  return (
+    return (
     <div className="max-w-4xl mx-auto p-6 space-y-8">
+      <SmartGoals language={language} />
+
       <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 flex justify-between items-end">
         <div>
           <span className="text-[10px] font-black uppercase text-indigo-500 tracking-[0.2em]">Target: {plan.examType}</span>
@@ -101,7 +104,7 @@ const StudyPlanner: React.FC<Props> = ({ plan, language, onPlanCreated, onStartS
         </div>
       </div>
 
-      <div className="space-y-6 relative">
+            <div className="space-y-6 relative mt-10">
         <div className="absolute left-10 top-0 bottom-0 w-0.5 bg-slate-100" />
         {plan.modules.map((mod) => (
           <div key={mod.id} className="flex gap-10 group relative z-10">

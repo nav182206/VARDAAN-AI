@@ -22,11 +22,13 @@ import {
   ArrowRight,
   Lightbulb,
   FileText,
-  Library
+  Library,
+  Paperclip,
+  X
 } from 'lucide-react';
 import { GoogleGenAI, Modality } from "@google/genai";
 import { Language, ChatMessage, AppState, User, ForumPost, ForumReply, SUBJECTS, VaultItem, SharedResource } from './types';
-import { getCoachingResponse, getStressSupport } from './services/geminiService';
+import { getCoachingResponse, getStressSupport, getVideoExplanation } from './services/geminiService';
 import LanguageSelector from './components/LanguageSelector';
 import MasteryDashboard from './components/MasteryDashboard';
 import ExamPanicAlert from './components/ExamPanicAlert';
@@ -37,6 +39,11 @@ import TeacherDashboard from './components/TeacherDashboard';
 import AdminDashboard from './components/AdminDashboard';
 import StudyPlanner from './components/StudyPlanner';
 import KnowledgeVault from './components/KnowledgeVault';
+import StudyStreakTracker from './components/StudyStreakTracker';
+import ContextualActions from './components/ContextualActions';
+import ReactMarkdown from 'react-markdown';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 
 const INITIAL_BADGES = [
   { id: '1', name: 'Socratic Seeker', description: 'Ask 5 high-quality conceptual questions.', icon: 'award', unlocked: true },
@@ -115,7 +122,13 @@ const App: React.FC = () => {
   const [isVoiceActive, setIsVoiceActive] = useState(false);
   const [streak, setStreak] = useState(0);
   const [affirmation, setAffirmation] = useState<{ affirmation: string; tip: string } | null>(null);
-  const [subjectMenuOpen, setSubjectMenuOpen] = useState(false);
+    const [subjectMenuOpen, setSubjectMenuOpen] = useState(false);
+      const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
+  const [isVideoGenerating, setIsVideoGenerating] = useState(false);
+  const [generatedVideoUrl, setGeneratedVideoUrl] = useState<string | null>(null);
+  
+  const [attachment, setAttachment] = useState<{ data: string; mimeType: string; preview: string } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   const liveSessionRef = useRef<any>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -132,6 +145,8 @@ const App: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('vardaan_shared', JSON.stringify(state.sharedResources));
   }, [state.sharedResources]);
+
+  
 
   useEffect(() => {
     if (view === 'hub' && state.user) {
@@ -220,6 +235,19 @@ const App: React.FC = () => {
     if (scrollRef.current) scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [state.messages, state.isThinking]);
 
+  const handleGenerateVideo = async (prompt: string) => {
+    setIsVideoGenerating(true);
+    setGeneratedVideoUrl(null);
+    const videoUrl = await getVideoExplanation(prompt, '16:9');
+    setGeneratedVideoUrl(videoUrl);
+    setIsVideoGenerating(false);
+  };
+
+  useEffect(() => {
+    // Automatically generate a sample video on load to demonstrate the feature
+    handleGenerateVideo("Explain the concept of inertia and Newton's First Law of Motion in a simple way for a high school student.");
+  }, []);
+
   useEffect(() => {
     if (isVoiceActive) startVoiceSession();
     else stopVoiceSession();
@@ -237,9 +265,11 @@ const App: React.FC = () => {
     }
   };
 
+    
+
   const startVoiceSession = async () => {
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
       const inputCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
       const outputCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
       audioContextRef.current = outputCtx;
@@ -296,24 +326,52 @@ const App: React.FC = () => {
     }
   };
 
+    const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file && file.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64String = (reader.result as string).split(',')[1];
+        setAttachment({
+          data: base64String,
+          mimeType: file.type,
+          preview: URL.createObjectURL(file)
+        });
+      };
+      reader.readAsDataURL(file);
+    }
+    event.target.value = ''; // Reset file input
+  };
+
   const handleSendMessage = async (customText?: string) => {
-    const textToUse = customText || input;
-    if (!textToUse.trim() || state.isThinking) return;
-    const userMsg: ChatMessage = { id: Date.now().toString(), role: 'user', content: textToUse, timestamp: Date.now() };
+        const textToUse = customText || input;
+    const currentAttachment = attachment;
+        if ((!textToUse.trim() && !currentAttachment) || state.isThinking) return;
+        const userMsg: ChatMessage = { 
+      id: Date.now().toString(), 
+      role: 'user', 
+      content: textToUse, 
+      timestamp: Date.now(),
+      attachment: currentAttachment ? { data: currentAttachment.data, mimeType: currentAttachment.mimeType } : undefined
+    };
     setState(prev => ({ ...prev, messages: [...prev.messages, userMsg], isThinking: true }));
-    if (!customText) setInput('');
+        if (!customText) setInput('');
+    setAttachment(null);
+
     try {
-      const result = await getCoachingResponse(textToUse, state.messages, state.language, state.selectedSubject);
+                  const result = await getCoachingResponse(textToUse, state.messages, state.language, state.selectedSubject, currentAttachment || undefined);
+      
       const aiMsg: any = { 
         id: (Date.now() + 1).toString(), 
         role: 'assistant', 
-        content: result.explanation, 
+        directAnswer: result.directAnswer,
+        content: result.socraticExplanation, 
         timestamp: Date.now(), 
         phantomStepDetected: result.phantomStepDetected, 
         misconceptionDescription: result.misconceptionDescription, 
         rubricFeedback: result.rubricFeedback, 
         stressLevel: result.stressDetection as any, 
-        analogyUsed: result.conceptualExample || result.analogyUsed,
+        analogyUsed: result.conceptualExample,
         conceptNote: result.conceptNote
       };
       
@@ -340,6 +398,10 @@ const App: React.FC = () => {
     } catch (e) { setState(prev => ({ ...prev, isThinking: false })); }
   };
 
+    const handleAddItemToVault = (item: VaultItem) => {
+    setState(prev => ({ ...prev, vault: [item, ...prev.vault] }));
+  };
+
   const handleDeleteVaultItem = (id: string) => {
     setState(prev => ({ ...prev, vault: prev.vault.filter(item => item.id !== id) }));
   };
@@ -359,7 +421,21 @@ const App: React.FC = () => {
     }));
   };
 
-  const handleLogin = (user: User) => setState(prev => ({ ...prev, user }));
+    const handleLogin = (user: User) => {
+    setState(prev => ({ 
+      ...prev, 
+      user,
+      messages: [
+        {
+          id: '1',
+          role: 'assistant',
+          content: "Namaste! I am Vardaan. I'll guide you to the answer across all your subjects. Speak or type any doubt to begin.",
+          timestamp: Date.now(),
+          stressLevel: 'low'
+        }
+      ]
+    }));
+  };
   const handleLogout = () => setState(prev => ({ ...prev, user: null }));
 
   const startBridgeLesson = (topic: string, subject: string) => {
@@ -372,58 +448,91 @@ const App: React.FC = () => {
     setTimeout(() => handleSendMessage(`I am ready for the bridge lesson on ${topic} in ${subject}. Explain with notes and scientific examples.`), 500);
   };
 
+  const handleStartStudySession = (topic: string, subject: string) => {
+    setState(prev => ({ ...prev, selectedSubject: subject as any }));
+    setView('chat');
+    setTimeout(() => handleSendMessage(`Help me master ${topic} in ${subject}.`), 300);
+  };
+
+    
+
   if (!state.user) return <LoginPage onLogin={handleLogin} />;
 
   return (
     <div className={`flex h-screen overflow-hidden font-sans transition-colors duration-1000 ${state.stressLevel === 'high' ? 'bg-amber-50' : 'bg-slate-50'}`}>
       {state.stressWarning && <ExamPanicAlert language={state.language} onClose={() => setState(p => ({ ...p, stressWarning: false, stressLevel: 'low' }))} />}
       
-      <aside className="w-72 bg-white/95 backdrop-blur-2xl border-r border-slate-200 flex flex-col hidden md:flex shrink-0 z-30 shadow-2xl shadow-slate-200/50">
-        <div className="p-10 border-b border-slate-100">
-          <div className="flex items-center gap-4">
-            <div className={`w-12 h-12 rounded-[1.25rem] flex items-center justify-center shadow-2xl bg-gradient-to-br from-indigo-600 to-indigo-800 rotate-12 transition-transform hover:rotate-0`}><Sparkles className="w-6 h-6 text-white" /></div>
-            <div>
-              <h1 className="text-2xl font-black text-slate-800 leading-none tracking-tight">VARDAAN</h1>
-              <span className="text-[9px] font-black text-indigo-500 uppercase tracking-widest mt-1 block">Empowering Bharat</span>
+                              <aside 
+        className={`bg-white/95 backdrop-blur-2xl border-r border-slate-200 flex flex-col shrink-0 z-30 shadow-2xl shadow-slate-200/50 transition-all duration-300 ${sidebarCollapsed ? 'w-24' : 'w-72'}`}
+                
+      >
+                        <div className={`border-b border-slate-100 ${sidebarCollapsed ? 'p-4' : 'p-10'}`}>
+          <div className={`flex items-center gap-4 ${sidebarCollapsed ? 'justify-center' : ''}`}>
+                        <div className={`w-12 h-12 rounded-[1.25rem] flex items-center justify-center shadow-2xl bg-gradient-to-br from-indigo-600 to-indigo-800 rotate-12 transition-transform hover:rotate-0`}>
+              <Sparkles className="w-6 h-6 text-white" />
             </div>
+            {!sidebarCollapsed && (
+              <div>
+                <h1 className="text-2xl font-black text-slate-800 leading-none tracking-tight">VARDAAN</h1>
+                <span className="text-[9px] font-black text-indigo-500 uppercase tracking-widest mt-1 block">Empowering Bharat</span>
+              </div>
+            )}
           </div>
         </div>
-        <nav className="flex-1 p-6 space-y-2 overflow-y-auto scrollbar-hide">
+                <nav className={`flex-1 space-y-2 overflow-y-auto scrollbar-hide ${sidebarCollapsed ? 'p-4' : 'p-6'}`}>
           {state.user.role === 'student' && (
             <>
-              <button onClick={() => setView('hub')} className={`w-full flex items-center gap-3 px-6 py-5 rounded-[2rem] transition-all group ${view === 'hub' ? 'bg-indigo-600 text-white font-bold shadow-xl shadow-indigo-100' : 'text-slate-500 hover:bg-slate-50'}`}>
-                <LayoutDashboard className={`w-5 h-5 transition-transform group-hover:scale-110`} /> Hub
+                                                                                                  <button onClick={() => setView('hub')} className={`flex items-center gap-3 rounded-full transition-all group ${sidebarCollapsed ? 'w-14 h-14 justify-center' : 'w-full px-6 py-4'} ${view === 'hub' ? 'bg-indigo-600 text-white font-bold shadow-lg shadow-indigo-200' : 'text-slate-500 hover:bg-slate-100'}`}>
+                <LayoutDashboard className="w-5 h-5" />
+                {!sidebarCollapsed && <span className="font-bold">Hub</span>}
               </button>
-              <button onClick={() => setView('planner')} className={`w-full flex items-center gap-3 px-6 py-5 rounded-[2rem] transition-all group ${view === 'planner' ? 'bg-indigo-600 text-white font-bold shadow-xl shadow-indigo-100' : 'text-slate-500 hover:bg-slate-50'}`}>
-                <CalendarDays className={`w-5 h-5 transition-transform group-hover:scale-110`} /> Roadmap
+                                          <button onClick={() => setView('planner')} className={`flex items-center gap-3 rounded-full transition-all group ${sidebarCollapsed ? 'w-14 h-14 justify-center' : 'w-full px-6 py-4'} ${view === 'planner' ? 'bg-indigo-600 text-white font-bold shadow-lg shadow-indigo-200' : 'text-slate-500 hover:bg-slate-100'}`}>
+                <CalendarDays className="w-5 h-5" />
+                {!sidebarCollapsed && <span className="font-bold">Roadmap</span>}
               </button>
-              <button onClick={() => setView('chat')} className={`w-full flex items-center gap-3 px-6 py-5 rounded-[2rem] transition-all group ${view === 'chat' ? 'bg-indigo-600 text-white font-bold shadow-xl shadow-indigo-100' : 'text-slate-500 hover:bg-slate-50'}`}>
-                <BrainCircuit className={`w-5 h-5 transition-transform group-hover:scale-110`} /> Socratic Coach
+                                          <button onClick={() => setView('chat')} className={`flex items-center gap-3 rounded-full transition-all group ${sidebarCollapsed ? 'w-14 h-14 justify-center' : 'w-full px-6 py-4'} ${view === 'chat' ? 'bg-indigo-600 text-white font-bold shadow-lg shadow-indigo-200' : 'text-slate-500 hover:bg-slate-100'}`}>
+                <BrainCircuit className="w-5 h-5" />
+                {!sidebarCollapsed && <span className="font-bold">Vardaan AI</span>}
               </button>
-              <button onClick={() => setView('vault')} className={`w-full flex items-center gap-3 px-6 py-5 rounded-[2rem] transition-all group ${view === 'vault' ? 'bg-indigo-600 text-white font-bold shadow-xl shadow-indigo-100' : 'text-slate-500 hover:bg-slate-50'}`}>
-                <Library className={`w-5 h-5 transition-transform group-hover:scale-110`} /> Knowledge Vault
+                                          <button onClick={() => setView('vault')} className={`flex items-center gap-3 rounded-full transition-all group ${sidebarCollapsed ? 'w-14 h-14 justify-center' : 'w-full px-6 py-4'} ${view === 'vault' ? 'bg-indigo-600 text-white font-bold shadow-lg shadow-indigo-200' : 'text-slate-500 hover:bg-slate-100'}`}>
+                <Library className="w-5 h-5" />
+                {!sidebarCollapsed && <span className="font-bold">Knowledge Vault</span>}
               </button>
-              <button onClick={() => setView('dashboard')} className={`w-full flex items-center gap-3 px-6 py-5 rounded-[2rem] transition-all group ${view === 'dashboard' ? 'bg-indigo-600 text-white font-bold shadow-xl shadow-indigo-100' : 'text-slate-500 hover:bg-slate-50'}`}>
-                <Star className={`w-5 h-5 transition-transform group-hover:scale-110`} /> Mastery Map
+                                          <button onClick={() => setView('dashboard')} className={`flex items-center gap-3 rounded-full transition-all group ${sidebarCollapsed ? 'w-14 h-14 justify-center' : 'w-full px-6 py-4'} ${view === 'dashboard' ? 'bg-indigo-600 text-white font-bold shadow-lg shadow-indigo-200' : 'text-slate-500 hover:bg-slate-100'}`}>
+                <Star className="w-5 h-5" />
+                {!sidebarCollapsed && <span className="font-bold">Mastery Map</span>}
               </button>
-              <button onClick={() => setView('forum')} className={`w-full flex items-center gap-3 px-6 py-5 rounded-[2rem] transition-all group ${view === 'forum' ? 'bg-indigo-600 text-white font-bold shadow-xl shadow-indigo-100' : 'text-slate-500 hover:bg-slate-50'}`}>
-                <Users className={`w-5 h-5 transition-transform group-hover:scale-110`} /> Study Pods
+                                          <button onClick={() => setView('forum')} className={`flex items-center gap-3 rounded-full transition-all group ${sidebarCollapsed ? 'w-14 h-14 justify-center' : 'w-full px-6 py-4'} ${view === 'forum' ? 'bg-indigo-600 text-white font-bold shadow-lg shadow-indigo-200' : 'text-slate-500 hover:bg-slate-100'}`}>
+                <Users className="w-5 h-5" />
+                {!sidebarCollapsed && <span className="font-bold">Study Pods</span>}
               </button>
             </>
           )}
           {state.user.role === 'teacher' && (
             <>
-              <button onClick={() => setView('teacher-home')} className={`w-full flex items-center gap-3 px-6 py-5 rounded-[2rem] transition-all group ${view === 'teacher-home' ? 'bg-emerald-600 text-white font-bold shadow-xl shadow-emerald-100' : 'text-slate-500 hover:bg-slate-50'}`}>
-                <LayoutDashboard className={`w-5 h-5 transition-transform group-hover:scale-110`} /> Classroom Pulse
+                                          <button onClick={() => setView('teacher-home')} className={`w-full flex items-center gap-3 rounded-[2rem] transition-all group ${sidebarCollapsed ? 'p-5 justify-center' : 'px-6 py-5'} ${view === 'teacher-home' ? 'bg-emerald-600 text-white font-bold shadow-xl shadow-emerald-100' : 'text-slate-500 hover:bg-slate-50'}`}>
+                <LayoutDashboard className={`w-5 h-5 transition-transform group-hover:scale-110`} />
+                {!sidebarCollapsed && 'Classroom Pulse'}
               </button>
-              <button className="w-full flex items-center gap-3 px-6 py-5 rounded-[2rem] text-slate-500 hover:bg-slate-50 transition-all"><Settings className="w-5 h-5" /> Analytics</button>
+                                          <button className={`w-full flex items-center gap-3 rounded-[2rem] text-slate-500 hover:bg-slate-50 transition-all ${sidebarCollapsed ? 'p-5 justify-center' : 'px-6 py-5'}`}><Settings className="w-5 h-5" />
+                {!sidebarCollapsed && 'Analytics'}
+              </button>
             </>
           )}
-          {state.user.role === 'admin' && <button onClick={() => setView('admin-home')} className={`w-full flex items-center gap-3 px-6 py-5 rounded-[2rem] transition-all group ${view === 'admin-home' ? 'bg-slate-800 text-white font-bold shadow-2xl' : 'text-slate-500 hover:bg-slate-50'}`}><ShieldCheck className="w-5 h-5" /> Knowledge Portal</button>}
+          {state.user.role === 'admin' &&                             <button onClick={() => setView('admin-home')} className={`w-full flex items-center gap-3 rounded-[2rem] transition-all group ${sidebarCollapsed ? 'p-5 justify-center' : 'px-6 py-5'} ${view === 'admin-home' ? 'bg-slate-800 text-white font-bold shadow-2xl' : 'text-slate-500 hover:bg-slate-50'}`}><ShieldCheck className="w-5 h-5" />
+                {!sidebarCollapsed && 'Knowledge Portal'}
+              </button>}
         </nav>
-        <div className="p-6 border-t border-slate-100">
-          <button onClick={handleLogout} className="w-full flex items-center gap-3 px-6 py-5 rounded-[2rem] text-slate-400 hover:text-rose-600 font-bold text-sm transition-colors">
-            <LogOut className="w-5 h-5" /> Sign Out
+                <div className={`border-t border-slate-100 ${sidebarCollapsed ? 'p-4' : 'p-6'}`}>
+                                        <button 
+            onClick={() => setSidebarCollapsed(!sidebarCollapsed)} 
+            className={`w-full flex items-center gap-3 rounded-[2rem] text-slate-500 hover:bg-slate-100 font-bold text-sm transition-all mb-2 ${sidebarCollapsed ? 'p-5 justify-center' : 'px-6 py-5'}`}>
+            <ArrowRight className={`w-5 h-5 transition-transform ${!sidebarCollapsed ? 'rotate-180' : ''}`} />
+            {!sidebarCollapsed && 'Collapse Menu'}
+          </button>
+          <button onClick={handleLogout} className={`w-full flex items-center gap-3 rounded-[2rem] text-slate-400 hover:text-rose-600 font-bold text-sm transition-colors ${sidebarCollapsed ? 'p-5 justify-center' : 'px-6 py-5'}`}>
+            <LogOut className="w-5 h-5" />
+            {!sidebarCollapsed && 'Sign Out'}
           </button>
         </div>
       </aside>
@@ -460,11 +569,7 @@ const App: React.FC = () => {
               )}
             </div>
           </div>
-          <div className="flex items-center gap-6">
-             <div className="hidden lg:flex items-center px-6 py-2.5 bg-white rounded-2xl border border-slate-100 gap-3 shadow-sm group hover:scale-105 transition-all">
-                <Flame className={`w-5 h-5 ${streak > 0 ? 'text-orange-500 animate-bounce' : 'text-slate-300'}`} />
-                <span className="text-xs font-black text-slate-700 tracking-tight">{streak} Day Streak</span>
-             </div>
+                    <div className="flex items-center gap-6">
              <div className="flex items-center gap-3 px-6 py-3 bg-slate-900 rounded-[1.5rem] text-white shadow-2xl shadow-slate-900/20 hover:scale-105 transition-all">
                 <Trophy className="w-5 h-5 text-amber-400" />
                 <span className="text-sm font-black tracking-tight">{state.stats.points.toLocaleString()} XP</span>
@@ -474,7 +579,7 @@ const App: React.FC = () => {
 
         <div className={`flex-1 overflow-y-auto relative z-10 scrollbar-hide ${view === 'chat' ? 'overflow-hidden flex flex-col' : ''}`}>
           {view === 'hub' && (
-            <div className="p-12 max-w-7xl mx-auto space-y-12 animate-in fade-in duration-1000">
+                        <div className="p-12 max-w-7xl mx-auto space-y-12 animate-in fade-in duration-1000">
               <div className="grid grid-cols-1 xl:grid-cols-3 gap-10">
                 <div className="xl:col-span-2 bg-gradient-to-br from-indigo-600 to-indigo-900 rounded-[4rem] p-16 text-white shadow-[0_40px_80px_-20px_rgba(79,70,229,0.3)] relative overflow-hidden">
                   <div className="relative z-10">
@@ -489,41 +594,42 @@ const App: React.FC = () => {
                   </div>
                   <div className="absolute -right-20 -bottom-20 w-96 h-96 bg-white/10 rounded-full blur-[100px]" />
                 </div>
-
-                <div className="flex flex-col gap-8">
-                  <div className="bg-white p-10 rounded-[4rem] border border-slate-100 shadow-xl flex-1 flex flex-col justify-between">
-                    <div>
-                      <h3 className="text-xl font-black text-slate-800 mb-6 flex items-center gap-3"><Heart className="w-6 h-6 text-rose-500" /> Focus Support</h3>
-                      {affirmation ? (
-                        <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-700">
-                          <p className="text-2xl font-black text-slate-700 leading-tight italic">"{affirmation.affirmation}"</p>
-                          <div className="p-5 bg-rose-50 rounded-3xl border border-rose-100 flex items-start gap-4">
-                            <Sparkles className="w-5 h-5 text-rose-500 mt-1 shrink-0" />
-                            <p className="text-sm font-bold text-rose-700 leading-relaxed">{affirmation.tip}</p>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="space-y-4">
-                          <div className="h-8 bg-slate-100 rounded-full w-full animate-pulse" />
-                          <div className="h-20 bg-slate-100 rounded-[2rem] w-full animate-pulse" />
-                        </div>
-                      )}
-                    </div>
-                    <button onClick={() => setState(p => ({ ...p, stressWarning: true }))} className="mt-8 w-full py-5 bg-slate-900 text-white rounded-[2rem] font-black text-sm uppercase tracking-widest hover:bg-indigo-600 transition-all shadow-xl">Guided Relaxation</button>
-                  </div>
-                </div>
+                <StudyStreakTracker streak={streak} />
               </div>
 
-              <div className="bg-white p-12 rounded-[4rem] border border-slate-100 shadow-xl">
-                <div className="flex justify-between items-center mb-10">
-                  <h3 className="text-3xl font-black text-slate-800">Mastery Snapshot</h3>
-                  <button onClick={() => setView('dashboard')} className="text-indigo-600 font-black flex items-center gap-2 hover:gap-4 transition-all uppercase text-xs tracking-widest">Syllabus Overview <ArrowRight className="w-5 h-5" /></button>
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-10">
+                <div className="bg-white p-10 rounded-[4rem] border border-slate-100 shadow-xl flex flex-col justify-between">
+                  <div>
+                    <h3 className="text-xl font-black text-slate-800 mb-6 flex items-center gap-3"><Heart className="w-6 h-6 text-rose-500" /> Focus Support</h3>
+                    {affirmation ? (
+                      <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-700">
+                        <p className="text-2xl font-black text-slate-700 leading-tight italic">"{affirmation.affirmation}"</p>
+                        <div className="p-5 bg-rose-50 rounded-3xl border border-rose-100 flex items-start gap-4">
+                          <Sparkles className="w-5 h-5 text-rose-500 mt-1 shrink-0" />
+                          <p className="text-sm font-bold text-rose-700 leading-relaxed">{affirmation.tip}</p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        <div className="h-8 bg-slate-100 rounded-full w-full animate-pulse" />
+                        <div className="h-20 bg-slate-100 rounded-[2rem] w-full animate-pulse" />
+                      </div>
+                    )}
+                  </div>
+                  <button onClick={() => setState(p => ({ ...p, stressWarning: true }))} className="mt-8 w-full py-5 bg-slate-900 text-white rounded-[2rem] font-black text-sm uppercase tracking-widest hover:bg-indigo-600 transition-all shadow-xl">Guided Relaxation</button>
                 </div>
-                <MasteryDashboard onStartLesson={startBridgeLesson} />
+
+                <div className="bg-white p-12 rounded-[4rem] border border-slate-100 shadow-xl">
+                  <div className="flex justify-between items-center mb-10">
+                    <h3 className="text-3xl font-black text-slate-800">Mastery Snapshot</h3>
+                    <button onClick={() => setView('dashboard')} className="text-indigo-600 font-black flex items-center gap-2 hover:gap-4 transition-all uppercase text-xs tracking-widest">Syllabus Overview <ArrowRight className="w-5 h-5" /></button>
+                  </div>
+                  <MasteryDashboard onStartLesson={startBridgeLesson} />
+                </div>
               </div>
             </div>
           )}
-          {view === 'planner' && <div className="p-10 w-full"><StudyPlanner plan={state.studyPlan} language={state.language} onPlanCreated={(p) => { setState(s => ({ ...s, studyPlan: p })); localStorage.setItem('vardaan_plan', JSON.stringify(p)); }} onStartSession={(t,s) => { setState(prev => ({ ...prev, selectedSubject: s as any })); setView('chat'); setTimeout(() => handleSendMessage(`Help me master ${t} in ${s}.`), 300); }} /></div>}
+          {view === 'planner' && <div className="p-10 w-full"><StudyPlanner plan={state.studyPlan} language={state.language} onPlanCreated={(p) => { setState(s => ({ ...s, studyPlan: p })); localStorage.setItem('vardaan_plan', JSON.stringify(p)); }} onStartSession={handleStartStudySession} /></div>}
           {view === 'chat' && (
             <div className="flex flex-col h-full bg-slate-50 relative">
               <div ref={scrollRef} className="flex-1 overflow-y-auto px-8 md:px-20 py-10 space-y-12 scroll-smooth">
@@ -533,7 +639,7 @@ const App: React.FC = () => {
                        {msg.role === 'assistant' ? (
                          <>
                            <div className="w-6 h-6 rounded-full bg-indigo-600 flex items-center justify-center text-white shadow-md"><Bot className="w-3.5 h-3.5" /></div>
-                           <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">Vardaan Socratic Coach</span>
+                           <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">Vardaan AI</span>
                          </>
                        ) : (
                          <>
@@ -547,12 +653,29 @@ const App: React.FC = () => {
                           ? 'bg-indigo-50 text-slate-900 border-indigo-200 rounded-tr-none' 
                           : 'bg-white text-slate-900 border-indigo-300 border-l-[10px] border-l-indigo-600 rounded-tl-none'
                       }`}>
-                        {msg.content}
+                                                {msg.directAnswer ? (
+                          <>
+                            <div className="text-xl font-black text-slate-900"><ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>{msg.directAnswer}</ReactMarkdown></div>
+                            <div className="my-6 border-t border-slate-200/80"></div>
+                            <div className="text-lg text-slate-700"><ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>{msg.content}</ReactMarkdown></div>
+                          </>
+                        ) : (
+                          <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>{msg.content}</ReactMarkdown>
+                        )}
+
+                        {msg.attachment && (
+                          <div className="mt-4">
+                            <img src={`data:${msg.attachment.mimeType};base64,${msg.attachment.data}`} alt="Attachment" className="rounded-2xl max-w-sm max-h-80 object-contain border-2 border-slate-200" />
+                          </div>
+                        )}
                         
                         {msg.role === 'assistant' && msg.analogyUsed && (
-                          <div className="mt-6 p-6 bg-slate-100 rounded-[2rem] border-2 border-slate-200 text-base italic text-slate-900 font-bold flex items-start gap-4">
+                          <div className="mt-6 p-6 bg-slate-50 rounded-[2rem] border-2 border-slate-200 text-base text-slate-800 flex items-start gap-4">
                              <Lightbulb className="w-5 h-5 shrink-0 text-amber-500 mt-1" />
-                             <span><strong>Concept Explainer:</strong> {msg.analogyUsed}</span>
+                             <div>
+                               <strong className="font-black block mb-1 text-slate-900">Conceptual Example</strong>
+                               <span className="font-medium">{msg.analogyUsed}</span>
+                             </div>
                           </div>
                         )}
 
@@ -599,15 +722,52 @@ const App: React.FC = () => {
                   </div>
                 )}
               </div>
-              <div className="p-12 bg-white border-t border-slate-200 relative z-50 shadow-[0_-20px_40px_-20px_rgba(0,0,0,0.05)]">
-                <div className="max-w-4xl mx-auto flex items-center gap-5">
+                            <div className="p-12 bg-white border-t-2 border-slate-200 relative z-50 shadow-[0_-20px_40px_-20px_rgba(0,0,0,0.05)]">
+                                <ContextualActions 
+                  lastMessage={state.messages[state.messages.length - 1]} 
+                  onAction={(actionText) => handleSendMessage(actionText)} 
+                  onGenerateVideo={handleGenerateVideo}
+                />
+                                {attachment && (
+                  <div className="max-w-4xl mx-auto mb-4 p-4 bg-slate-100 rounded-3xl border border-slate-200 flex items-center justify-between animate-in fade-in duration-300">
+                    <div className="flex items-center gap-4">
+                      <img src={attachment.preview} alt="Preview" className="w-16 h-16 rounded-xl object-cover" />
+                      <div>
+                        <p className="font-bold text-slate-800">Image attached</p>
+                        <p className="text-xs text-slate-500">Ready to send with your message.</p>
+                      </div>
+                    </div>
+                    <button onClick={() => setAttachment(null)} className="p-3 rounded-full bg-slate-200 hover:bg-slate-300 transition-all">
+                      <X className="w-5 h-5 text-slate-600" />
+                    </button>
+                  </div>
+                )}
+                                                {isVideoGenerating && (
+                  <div className="max-w-4xl mx-auto my-4 p-4 bg-slate-100 rounded-3xl border border-slate-200 flex items-center justify-center animate-in fade-in duration-300">
+                    <Loader2 className="w-5 h-5 text-indigo-600 animate-spin mr-3" />
+                    <p className="font-bold text-slate-800">Generating video explanation, this may take a moment...</p>
+                  </div>
+                )}
+                {generatedVideoUrl && (
+                  <div className="max-w-4xl mx-auto my-4 p-4 bg-slate-100 rounded-3xl border border-slate-200 animate-in fade-in duration-300">
+                    <video src={generatedVideoUrl} controls autoPlay className="w-full rounded-2xl" />
+                  </div>
+                )}
+                                <div className="max-w-4xl mx-auto flex items-center gap-5 pt-8">
                   <div className="flex-1 bg-slate-100 rounded-[3rem] border-2 border-slate-200 p-2.5 pl-10 flex items-center gap-5 focus-within:border-indigo-600 focus-within:bg-white focus-within:ring-8 focus-within:ring-indigo-50 transition-all duration-300">
+                                        <input type="file" ref={fileInputRef} onChange={handleFileChange} accept="image/*" className="hidden" />
+                    <button 
+                      onClick={() => fileInputRef.current?.click()}
+                      className="p-5 rounded-full text-slate-400 hover:bg-slate-200 transition-all"
+                    >
+                      <Paperclip className="w-7 h-7" />
+                    </button>
                     <input 
                       type="text" 
                       value={input} 
                       onChange={(e) => setInput(e.target.value)} 
                       onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()} 
-                      placeholder={`Discuss ${state.selectedSubject} with Vardaan AI...`} 
+                      placeholder={`Ask with text or an image...`} 
                       className="flex-1 py-5 text-slate-800 focus:outline-none font-bold text-xl bg-transparent" 
                     />
                     <div className="flex gap-3">
@@ -631,8 +791,8 @@ const App: React.FC = () => {
             </div>
           )}
           {view === 'forum' && <CommunityForum posts={forumPosts} onUpdatePosts={setForumPosts} />}
-          {view === 'vault' && <KnowledgeVault items={state.vault} sharedResources={state.sharedResources} onDeleteItem={handleDeleteVaultItem} />}
-          {view === 'dashboard' && <div className="p-10"><MasteryDashboard onStartLesson={startBridgeLesson} /></div>}
+          {view === 'vault' && <KnowledgeVault items={state.vault} sharedResources={state.sharedResources} onDeleteItem={handleDeleteVaultItem} onAddItem={handleAddItemToVault} language={state.language} />}
+          {view === 'dashboard' && <div className="p-10"><MasteryDashboard onStartLesson={startBridgeLesson} language={state.language} /></div>}
           {view === 'teacher-home' && <TeacherDashboard forumPosts={forumPosts} onReply={handleTeacherReply} />}
           {view === 'admin-home' && (
             <AdminDashboard 

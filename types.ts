@@ -15,6 +15,11 @@ export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  directAnswer?: string;
+  attachment?: {
+    data: string; // base64 encoded image
+    mimeType: string;
+  };
   timestamp: number;
   phantomStepDetected?: boolean;
   misconceptionDescription?: string;
