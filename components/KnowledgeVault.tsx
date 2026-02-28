@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Search, Library, BookOpen, Trash2, Filter, Star, Clock, FileText, ChevronRight, BrainCircuit, Globe, X, Download, Maximize2, ZoomIn, ZoomOut, Loader2, Info, Book } from 'lucide-react';
+import { Search, Library, BookOpen, Trash2, Filter, Star, Clock, FileText, ChevronRight, BrainCircuit, Globe, X, Download, Maximize2, ZoomIn, ZoomOut, Loader2, Info, Book, Sparkles } from 'lucide-react';
 import { VaultItem, SUBJECTS, SharedResource, Language } from '../types';
 import { getChapterSummary, getDoubtExplanation } from '../services/geminiService';
 
@@ -169,7 +169,7 @@ const KnowledgeVault: React.FC<Props> = ({ items, sharedResources, onDeleteItem,
       </div>
 
             <div className="bg-white rounded-[3rem] p-10 border border-slate-100 shadow-sm w-full mt-10">
-        <h3 className="text-2xl font-black text-slate-800 mb-6 flex items-center gap-3"><Lightbulb className="w-7 h-7 text-amber-500" /> AI Doubt Solver</h3>
+        <h3 className="text-2xl font-black text-slate-800 mb-6 flex items-center gap-3"><Sparkles className="w-7 h-7 text-amber-500" /> AI Doubt Solver</h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
           <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-6">
             <div>

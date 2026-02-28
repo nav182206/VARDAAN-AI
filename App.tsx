@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
+
 import { 
   Send, 
   LayoutDashboard, 
@@ -20,25 +21,29 @@ import {
   Bot,
   Heart,
   ArrowRight,
-  Lightbulb,
   FileText,
   Library,
   Paperclip,
-  X
+  X,
+  ClipboardCheck
 } from 'lucide-react';
 import { GoogleGenAI, Modality } from "@google/genai";
 import { Language, ChatMessage, AppState, User, ForumPost, ForumReply, SUBJECTS, VaultItem, SharedResource } from './types';
-import { getCoachingResponse, getStressSupport, getVideoExplanation } from './services/geminiService';
+import { getCoachingResponse, getStressSupport } from './services/geminiService';
 import LanguageSelector from './components/LanguageSelector';
 import MasteryDashboard from './components/MasteryDashboard';
 import ExamPanicAlert from './components/ExamPanicAlert';
 import CommunityForum from './components/CommunityForum';
 import AchievementsView from './components/AchievementsView';
-import LoginPage from './components/LoginPage';
+import RoleSelector from './src/components/RoleSelector';
+import Auth from './src/components/Auth';
+import { supabase } from './src/services/supabase';
+
 import TeacherDashboard from './components/TeacherDashboard';
 import AdminDashboard from './components/AdminDashboard';
 import StudyPlanner from './components/StudyPlanner';
 import KnowledgeVault from './components/KnowledgeVault';
+import AssignmentGrader from './components/AssignmentGrader';
 import StudyStreakTracker from './components/StudyStreakTracker';
 import ContextualActions from './components/ContextualActions';
 import ReactMarkdown from 'react-markdown';
@@ -86,7 +91,6 @@ const INITIAL_RESOURCES: SharedResource[] = [
 
 const App: React.FC = () => {
   const [state, setState] = useState<AppState>({
-    user: null,
     language: 'English',
     selectedSubject: 'Maths',
     messages: [
@@ -118,14 +122,56 @@ const App: React.FC = () => {
   });
 
   const [input, setInput] = useState('');
-  const [view, setView] = useState<'chat' | 'hub' | 'dashboard' | 'forum' | 'achievements' | 'teacher-home' | 'admin-home' | 'planner' | 'vault'>('hub');
+  const [view, setView] = useState<'chat' | 'hub' | 'dashboard' | 'forum' | 'achievements' | 'teacher-home' | 'admin-home' | 'planner' | 'vault' | 'grader'>('hub');
   const [isVoiceActive, setIsVoiceActive] = useState(false);
   const [streak, setStreak] = useState(0);
   const [affirmation, setAffirmation] = useState<{ affirmation: string; tip: string } | null>(null);
-    const [subjectMenuOpen, setSubjectMenuOpen] = useState(false);
-      const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
-  const [isVideoGenerating, setIsVideoGenerating] = useState(false);
-  const [generatedVideoUrl, setGeneratedVideoUrl] = useState<string | null>(null);
+  const [subjectMenuOpen, setSubjectMenuOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
+  const [userRole, setUserRole] = useState<'student' | 'teacher' | 'admin' | null>(null);
+  const [session, setSession] = useState<any>(null);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    const savedRole = localStorage.getItem('vardaan_user_role') as 'student' | 'teacher' | 'admin' | null;
+    if (savedRole) {
+      setUserRole(savedRole);
+    }
+
+    const lastLogin = localStorage.getItem('vardaan_last_login');
+    const currentStreak = Number(localStorage.getItem('vardaan_streak')) || 1;
+    const today = new Date().toDateString();
+
+    if (lastLogin !== today) {
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      if (lastLogin === yesterday.toDateString()) {
+        const newStreak = currentStreak + 1;
+        setStreak(newStreak);
+        localStorage.setItem('vardaan_streak', newStreak.toString());
+      } else {
+        setStreak(1);
+        localStorage.setItem('vardaan_streak', '1');
+      }
+      // We don't set the last_login here, only after an interaction.
+    } else {
+      setStreak(currentStreak);
+    }
+  }, []);
+
   
   const [attachment, setAttachment] = useState<{ data: string; mimeType: string; preview: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -133,6 +179,8 @@ const App: React.FC = () => {
   const liveSessionRef = useRef<any>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+
 
   useEffect(() => {
     localStorage.setItem('vardaan_forum_v2', JSON.stringify(forumPosts));
@@ -149,36 +197,17 @@ const App: React.FC = () => {
   
 
   useEffect(() => {
-    if (view === 'hub' && state.user) {
+    if (view === 'hub') {
       loadAffirmation();
     }
-  }, [view, state.user, state.selectedSubject]);
+  }, [view, state.selectedSubject]);
 
   const loadAffirmation = async () => {
     const support = await getStressSupport(state.stressLevel, state.selectedSubject, state.language);
     setAffirmation(support);
   };
 
-  const handleTeacherReply = (postId: string, content: string) => {
-    setForumPosts(prev => prev.map(post => {
-      if (post.id === postId) {
-        const newReply: ForumReply = {
-          id: Date.now().toString(),
-          author: state.user?.name || 'Verified Teacher',
-          content,
-          isTeacher: true,
-          timestamp: Date.now()
-        };
-        return {
-          ...post,
-          teacherReplies: [...post.teacherReplies, newReply],
-          isResolved: true,
-          replyCount: post.replyCount + 1
-        };
-      }
-      return post;
-    }));
-  };
+
 
   const encode = (bytes: Uint8Array) => {
     let binary = '';
@@ -204,49 +233,15 @@ const App: React.FC = () => {
     return buffer;
   };
 
-  useEffect(() => {
-    const lastLogin = localStorage.getItem('vardaan_last_login');
-    const currentStreak = Number(localStorage.getItem('vardaan_streak')) || 1;
-    const today = new Date().toDateString();
 
-    if (lastLogin !== today) {
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      if (lastLogin === yesterday.toDateString()) {
-        const newStreak = currentStreak + 1;
-        setStreak(newStreak);
-        localStorage.setItem('vardaan_streak', newStreak.toString());
-      } else {
-        setStreak(1);
-        localStorage.setItem('vardaan_streak', '1');
-      }
-      localStorage.setItem('vardaan_last_login', today);
-    } else {
-      setStreak(currentStreak);
-    }
-  }, []);
 
-  useEffect(() => {
-    if (state.user?.role === 'teacher') setView('teacher-home');
-    else if (state.user?.role === 'admin') setView('admin-home');
-  }, [state.user]);
+
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [state.messages, state.isThinking]);
 
-  const handleGenerateVideo = async (prompt: string) => {
-    setIsVideoGenerating(true);
-    setGeneratedVideoUrl(null);
-    const videoUrl = await getVideoExplanation(prompt, '16:9');
-    setGeneratedVideoUrl(videoUrl);
-    setIsVideoGenerating(false);
-  };
 
-  useEffect(() => {
-    // Automatically generate a sample video on load to demonstrate the feature
-    handleGenerateVideo("Explain the concept of inertia and Newton's First Law of Motion in a simple way for a high school student.");
-  }, []);
 
   useEffect(() => {
     if (isVoiceActive) startVoiceSession();
@@ -358,6 +353,12 @@ const App: React.FC = () => {
         if (!customText) setInput('');
     setAttachment(null);
 
+    // Update streak on interaction
+    const today = new Date().toDateString();
+    if (localStorage.getItem('vardaan_last_login') !== today) {
+      localStorage.setItem('vardaan_last_login', today);
+    }
+
     try {
                   const result = await getCoachingResponse(textToUse, state.messages, state.language, state.selectedSubject, currentAttachment || undefined);
       
@@ -421,22 +422,7 @@ const App: React.FC = () => {
     }));
   };
 
-    const handleLogin = (user: User) => {
-    setState(prev => ({ 
-      ...prev, 
-      user,
-      messages: [
-        {
-          id: '1',
-          role: 'assistant',
-          content: "Namaste! I am Vardaan. I'll guide you to the answer across all your subjects. Speak or type any doubt to begin.",
-          timestamp: Date.now(),
-          stressLevel: 'low'
-        }
-      ]
-    }));
-  };
-  const handleLogout = () => setState(prev => ({ ...prev, user: null }));
+
 
   const startBridgeLesson = (topic: string, subject: string) => {
     setState(prev => ({ 
@@ -454,13 +440,41 @@ const App: React.FC = () => {
     setTimeout(() => handleSendMessage(`Help me master ${topic} in ${subject}.`), 300);
   };
 
+  const handleSelectRole = (role: 'student' | 'teacher' | 'admin') => {
+    setUserRole(role);
+    localStorage.setItem('vardaan_user_role', role);
+    if (role === 'teacher') {
+      setView('teacher-home');
+    } else if (role === 'admin') {
+      setView('admin-home');
+    } else {
+      setView('hub');
+    }
+  };
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    setUserRole(null);
+    localStorage.removeItem('vardaan_user_role');
+  };
+
     
 
-  if (!state.user) return <LoginPage onLogin={handleLogin} />;
+
+
+
+
+  if (!session) {
+    return <Auth onAuthSuccess={() => {}} />;
+  }
+
+  if (!userRole) {
+    return <RoleSelector onSelectRole={handleSelectRole} />;
+  }
 
   return (
-    <div className={`flex h-screen overflow-hidden font-sans transition-colors duration-1000 ${state.stressLevel === 'high' ? 'bg-amber-50' : 'bg-slate-50'}`}>
-      {state.stressWarning && <ExamPanicAlert language={state.language} onClose={() => setState(p => ({ ...p, stressWarning: false, stressLevel: 'low' }))} />}
+    <div className={`flex h-screen overflow-hidden font-sans transition-colors duration-1000 ${userRole === 'student' && state.stressLevel === 'high' ? 'bg-amber-50' : 'bg-slate-50'}`}>
+      {userRole === 'student' && state.stressWarning && <ExamPanicAlert language={state.language} onClose={() => setState(p => ({ ...p, stressWarning: false, stressLevel: 'low' }))} />}
       
                               <aside 
         className={`bg-white/95 backdrop-blur-2xl border-r border-slate-200 flex flex-col shrink-0 z-30 shadow-2xl shadow-slate-200/50 transition-all duration-300 ${sidebarCollapsed ? 'w-24' : 'w-72'}`}
@@ -479,49 +493,69 @@ const App: React.FC = () => {
             )}
           </div>
         </div>
-                <nav className={`flex-1 space-y-2 overflow-y-auto scrollbar-hide ${sidebarCollapsed ? 'p-4' : 'p-6'}`}>
-          {state.user.role === 'student' && (
+        <nav className={`flex-1 space-y-2 overflow-y-auto scrollbar-hide ${sidebarCollapsed ? 'p-4' : 'p-6'}`}>
+          {userRole === 'student' && (
             <>
-                                                                                                  <button onClick={() => setView('hub')} className={`flex items-center gap-3 rounded-full transition-all group ${sidebarCollapsed ? 'w-14 h-14 justify-center' : 'w-full px-6 py-4'} ${view === 'hub' ? 'bg-indigo-600 text-white font-bold shadow-lg shadow-indigo-200' : 'text-slate-500 hover:bg-slate-100'}`}>
+              <button onClick={() => setView('hub')} className={`flex items-center gap-3 rounded-full transition-all group ${sidebarCollapsed ? 'w-14 h-14 justify-center' : 'w-full px-6 py-4'} ${view === 'hub' ? 'bg-indigo-600 text-white font-bold shadow-lg shadow-indigo-200' : 'text-slate-500 hover:bg-slate-100'}`}>
                 <LayoutDashboard className="w-5 h-5" />
                 {!sidebarCollapsed && <span className="font-bold">Hub</span>}
               </button>
-                                          <button onClick={() => setView('planner')} className={`flex items-center gap-3 rounded-full transition-all group ${sidebarCollapsed ? 'w-14 h-14 justify-center' : 'w-full px-6 py-4'} ${view === 'planner' ? 'bg-indigo-600 text-white font-bold shadow-lg shadow-indigo-200' : 'text-slate-500 hover:bg-slate-100'}`}>
+              <button onClick={() => setView('planner')} className={`flex items-center gap-3 rounded-full transition-all group ${sidebarCollapsed ? 'w-14 h-14 justify-center' : 'w-full px-6 py-4'} ${view === 'planner' ? 'bg-indigo-600 text-white font-bold shadow-lg shadow-indigo-200' : 'text-slate-500 hover:bg-slate-100'}`}>
                 <CalendarDays className="w-5 h-5" />
                 {!sidebarCollapsed && <span className="font-bold">Roadmap</span>}
               </button>
-                                          <button onClick={() => setView('chat')} className={`flex items-center gap-3 rounded-full transition-all group ${sidebarCollapsed ? 'w-14 h-14 justify-center' : 'w-full px-6 py-4'} ${view === 'chat' ? 'bg-indigo-600 text-white font-bold shadow-lg shadow-indigo-200' : 'text-slate-500 hover:bg-slate-100'}`}>
+              <button onClick={() => setView('chat')} className={`flex items-center gap-3 rounded-full transition-all group ${sidebarCollapsed ? 'w-14 h-14 justify-center' : 'w-full px-6 py-4'} ${view === 'chat' ? 'bg-indigo-600 text-white font-bold shadow-lg shadow-indigo-200' : 'text-slate-500 hover:bg-slate-100'}`}>
                 <BrainCircuit className="w-5 h-5" />
                 {!sidebarCollapsed && <span className="font-bold">Vardaan AI</span>}
               </button>
-                                          <button onClick={() => setView('vault')} className={`flex items-center gap-3 rounded-full transition-all group ${sidebarCollapsed ? 'w-14 h-14 justify-center' : 'w-full px-6 py-4'} ${view === 'vault' ? 'bg-indigo-600 text-white font-bold shadow-lg shadow-indigo-200' : 'text-slate-500 hover:bg-slate-100'}`}>
+              <button onClick={() => setView('vault')} className={`flex items-center gap-3 rounded-full transition-all group ${sidebarCollapsed ? 'w-14 h-14 justify-center' : 'w-full px-6 py-4'} ${view === 'vault' ? 'bg-indigo-600 text-white font-bold shadow-lg shadow-indigo-200' : 'text-slate-500 hover:bg-slate-100'}`}>
                 <Library className="w-5 h-5" />
                 {!sidebarCollapsed && <span className="font-bold">Knowledge Vault</span>}
               </button>
-                                          <button onClick={() => setView('dashboard')} className={`flex items-center gap-3 rounded-full transition-all group ${sidebarCollapsed ? 'w-14 h-14 justify-center' : 'w-full px-6 py-4'} ${view === 'dashboard' ? 'bg-indigo-600 text-white font-bold shadow-lg shadow-indigo-200' : 'text-slate-500 hover:bg-slate-100'}`}>
+              <button onClick={() => setView('dashboard')} className={`flex items-center gap-3 rounded-full transition-all group ${sidebarCollapsed ? 'w-14 h-14 justify-center' : 'w-full px-6 py-4'} ${view === 'dashboard' ? 'bg-indigo-600 text-white font-bold shadow-lg shadow-indigo-200' : 'text-slate-500 hover:bg-slate-100'}`}>
                 <Star className="w-5 h-5" />
                 {!sidebarCollapsed && <span className="font-bold">Mastery Map</span>}
               </button>
-                                          <button onClick={() => setView('forum')} className={`flex items-center gap-3 rounded-full transition-all group ${sidebarCollapsed ? 'w-14 h-14 justify-center' : 'w-full px-6 py-4'} ${view === 'forum' ? 'bg-indigo-600 text-white font-bold shadow-lg shadow-indigo-200' : 'text-slate-500 hover:bg-slate-100'}`}>
+              <button onClick={() => setView('forum')} className={`flex items-center gap-3 rounded-full transition-all group ${sidebarCollapsed ? 'w-14 h-14 justify-center' : 'w-full px-6 py-4'} ${view === 'forum' ? 'bg-indigo-600 text-white font-bold shadow-lg shadow-indigo-200' : 'text-slate-500 hover:bg-slate-100'}`}>
                 <Users className="w-5 h-5" />
                 {!sidebarCollapsed && <span className="font-bold">Study Pods</span>}
               </button>
+              <button onClick={() => setView('grader')} className={`flex items-center gap-3 rounded-full transition-all group ${sidebarCollapsed ? 'w-14 h-14 justify-center' : 'w-full px-6 py-4'} ${view === 'grader' ? 'bg-indigo-600 text-white font-bold shadow-lg shadow-indigo-200' : 'text-slate-500 hover:bg-slate-100'}`}>
+                <ClipboardCheck className="w-5 h-5" />
+                {!sidebarCollapsed && <span className="font-bold">Grader</span>}
+              </button>
             </>
           )}
-          {state.user.role === 'teacher' && (
+
+          {userRole === 'teacher' && (
             <>
-                                          <button onClick={() => setView('teacher-home')} className={`w-full flex items-center gap-3 rounded-[2rem] transition-all group ${sidebarCollapsed ? 'p-5 justify-center' : 'px-6 py-5'} ${view === 'teacher-home' ? 'bg-emerald-600 text-white font-bold shadow-xl shadow-emerald-100' : 'text-slate-500 hover:bg-slate-50'}`}>
-                <LayoutDashboard className={`w-5 h-5 transition-transform group-hover:scale-110`} />
-                {!sidebarCollapsed && 'Classroom Pulse'}
+              <button onClick={() => setView('teacher-home')} className={`flex items-center gap-3 rounded-full transition-all group ${sidebarCollapsed ? 'w-14 h-14 justify-center' : 'w-full px-6 py-4'} ${view === 'teacher-home' ? 'bg-emerald-600 text-white font-bold shadow-lg shadow-emerald-200' : 'text-slate-500 hover:bg-slate-100'}`}>
+                <LayoutDashboard className="w-5 h-5" />
+                {!sidebarCollapsed && <span className="font-bold">Classroom Pulse</span>}
               </button>
-                                          <button className={`w-full flex items-center gap-3 rounded-[2rem] text-slate-500 hover:bg-slate-50 transition-all ${sidebarCollapsed ? 'p-5 justify-center' : 'px-6 py-5'}`}><Settings className="w-5 h-5" />
-                {!sidebarCollapsed && 'Analytics'}
+              <button onClick={() => setView('forum')} className={`flex items-center gap-3 rounded-full transition-all group ${sidebarCollapsed ? 'w-14 h-14 justify-center' : 'w-full px-6 py-4'} ${view === 'forum' ? 'bg-emerald-600 text-white font-bold shadow-lg shadow-emerald-200' : 'text-slate-500 hover:bg-slate-100'}`}>
+                <Users className="w-5 h-5" />
+                {!sidebarCollapsed && <span className="font-bold">Study Pods</span>}
+              </button>
+              <button onClick={() => setView('grader')} className={`flex items-center gap-3 rounded-full transition-all group ${sidebarCollapsed ? 'w-14 h-14 justify-center' : 'w-full px-6 py-4'} ${view === 'grader' ? 'bg-emerald-600 text-white font-bold shadow-lg shadow-emerald-200' : 'text-slate-500 hover:bg-slate-100'}`}>
+                <ClipboardCheck className="w-5 h-5" />
+                {!sidebarCollapsed && <span className="font-bold">Grader</span>}
+              </button>
+              <button className={`flex items-center gap-3 rounded-full transition-all group text-slate-400 cursor-not-allowed ${sidebarCollapsed ? 'w-14 h-14 justify-center' : 'w-full px-6 py-4'}`}>
+                <Settings className="w-5 h-5" />
+                {!sidebarCollapsed && <span className="font-bold">Analytics</span>}
               </button>
             </>
           )}
-          {state.user.role === 'admin' &&                             <button onClick={() => setView('admin-home')} className={`w-full flex items-center gap-3 rounded-[2rem] transition-all group ${sidebarCollapsed ? 'p-5 justify-center' : 'px-6 py-5'} ${view === 'admin-home' ? 'bg-slate-800 text-white font-bold shadow-2xl' : 'text-slate-500 hover:bg-slate-50'}`}><ShieldCheck className="w-5 h-5" />
-                {!sidebarCollapsed && 'Knowledge Portal'}
-              </button>}
+
+          {userRole === 'admin' && (
+            <>
+              <button onClick={() => setView('admin-home')} className={`flex items-center gap-3 rounded-full transition-all group ${sidebarCollapsed ? 'w-14 h-14 justify-center' : 'w-full px-6 py-4'} ${view === 'admin-home' ? 'bg-slate-800 text-white font-bold shadow-lg' : 'text-slate-500 hover:bg-slate-100'}`}>
+                <ShieldCheck className="w-5 h-5" />
+                {!sidebarCollapsed && <span className="font-bold">Knowledge Portal</span>}
+              </button>
+            </>
+          )}
         </nav>
                 <div className={`border-t border-slate-100 ${sidebarCollapsed ? 'p-4' : 'p-6'}`}>
                                         <button 
@@ -530,10 +564,14 @@ const App: React.FC = () => {
             <ArrowRight className={`w-5 h-5 transition-transform ${!sidebarCollapsed ? 'rotate-180' : ''}`} />
             {!sidebarCollapsed && 'Collapse Menu'}
           </button>
-          <button onClick={handleLogout} className={`w-full flex items-center gap-3 rounded-[2rem] text-slate-400 hover:text-rose-600 font-bold text-sm transition-colors ${sidebarCollapsed ? 'p-5 justify-center' : 'px-6 py-5'}`}>
+
+          <button 
+            onClick={handleSignOut} 
+            className={`w-full flex items-center gap-3 rounded-[2rem] text-slate-500 hover:bg-rose-50 hover:text-rose-600 font-bold text-sm transition-all ${sidebarCollapsed ? 'p-5 justify-center' : 'px-6 py-5'}`}>
             <LogOut className="w-5 h-5" />
             {!sidebarCollapsed && 'Sign Out'}
           </button>
+
         </div>
       </aside>
 
@@ -546,34 +584,43 @@ const App: React.FC = () => {
               <p className="text-[10px] font-black uppercase text-slate-500 tracking-widest">{isVoiceActive ? 'Voice-to-Concept Active' : 'System Engine Online'}</p>
             </div>
             
-            <div className="relative">
-              <button 
-                onClick={() => setSubjectMenuOpen(!subjectMenuOpen)}
-                className="flex items-center gap-2 px-5 py-2.5 bg-indigo-50 rounded-full border border-indigo-100 hover:bg-indigo-100 transition-all"
-              >
-                 <span className="text-[10px] font-black uppercase text-indigo-600 tracking-tighter">Subject: {state.selectedSubject}</span>
-                 <Settings className="w-3 h-3 text-indigo-400" />
-              </button>
-              {subjectMenuOpen && (
-                <div className="absolute top-full left-0 mt-2 w-56 bg-white rounded-2xl shadow-2xl border border-slate-100 p-2 z-[100] animate-in zoom-in-95 duration-200">
-                   {SUBJECTS.map(s => (
-                     <button 
-                       key={s} 
-                       onClick={() => { setState(p => ({...p, selectedSubject: s})); setSubjectMenuOpen(false); }}
-                       className={`w-full text-left px-4 py-3 rounded-xl text-xs font-bold transition-all ${state.selectedSubject === s ? 'bg-indigo-600 text-white' : 'hover:bg-slate-50 text-slate-600'}`}
-                     >
-                        {s}
-                     </button>
-                   ))}
-                </div>
-              )}
-            </div>
+            {userRole === 'student' && (
+              <div className="relative">
+                <button 
+                  onClick={() => setSubjectMenuOpen(!subjectMenuOpen)}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-indigo-50 rounded-full border border-indigo-100 hover:bg-indigo-100 transition-all"
+                >
+                   <span className="text-[10px] font-black uppercase text-indigo-600 tracking-tighter">Subject: {state.selectedSubject}</span>
+                   <Settings className="w-3 h-3 text-indigo-400" />
+                </button>
+                {subjectMenuOpen && (
+                  <div className="absolute top-full left-0 mt-2 w-56 bg-white rounded-2xl shadow-2xl border border-slate-100 p-2 z-[100] animate-in zoom-in-95 duration-200">
+                     {SUBJECTS.map(s => (
+                       <button 
+                         key={s} 
+                         onClick={() => { setState(p => ({...p, selectedSubject: s})); setSubjectMenuOpen(false); }}
+                         className={`w-full text-left px-4 py-3 rounded-xl text-xs font-bold transition-all ${state.selectedSubject === s ? 'bg-indigo-600 text-white' : 'hover:bg-slate-50 text-slate-600'}`}
+                       >
+                          {s}
+                       </button>
+                     ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
                     <div className="flex items-center gap-6">
-             <div className="flex items-center gap-3 px-6 py-3 bg-slate-900 rounded-[1.5rem] text-white shadow-2xl shadow-slate-900/20 hover:scale-105 transition-all">
-                <Trophy className="w-5 h-5 text-amber-400" />
-                <span className="text-sm font-black tracking-tight">{state.stats.points.toLocaleString()} XP</span>
-             </div>
+              {userRole === 'student' && (
+                <div className="flex items-center gap-3 px-6 py-3 bg-slate-900 rounded-[1.5rem] text-white shadow-2xl shadow-slate-900/20 hover:scale-105 transition-all">
+                  <Trophy className="w-5 h-5 text-amber-400" />
+                  <span className="text-sm font-black tracking-tight">{state.stats.points.toLocaleString()} XP</span>
+                </div>
+              )}
+              {userRole !== 'student' && (
+                <div className="flex items-center gap-3 px-6 py-3">
+                  <span className="text-sm font-black tracking-tight text-slate-700 capitalize">{userRole} Portal</span>
+                </div>
+              )}
           </div>
         </header>
 
@@ -583,7 +630,7 @@ const App: React.FC = () => {
               <div className="grid grid-cols-1 xl:grid-cols-3 gap-10">
                 <div className="xl:col-span-2 bg-gradient-to-br from-indigo-600 to-indigo-900 rounded-[4rem] p-16 text-white shadow-[0_40px_80px_-20px_rgba(79,70,229,0.3)] relative overflow-hidden">
                   <div className="relative z-10">
-                    <h2 className="text-6xl font-black mb-6 tracking-tighter leading-none">Welcome, {state.user.name.split(' ')[0]}!</h2>
+                    <h2 className="text-6xl font-black mb-6 tracking-tighter leading-none">Welcome!</h2>
                     <p className="text-indigo-100 text-xl leading-relaxed max-w-xl opacity-80 font-medium">
                       Mastering {state.selectedSubject} logic today? I've analyzed your foundations across all NCERT domains.
                     </p>
@@ -669,15 +716,7 @@ const App: React.FC = () => {
                           </div>
                         )}
                         
-                        {msg.role === 'assistant' && msg.analogyUsed && (
-                          <div className="mt-6 p-6 bg-slate-50 rounded-[2rem] border-2 border-slate-200 text-base text-slate-800 flex items-start gap-4">
-                             <Lightbulb className="w-5 h-5 shrink-0 text-amber-500 mt-1" />
-                             <div>
-                               <strong className="font-black block mb-1 text-slate-900">Conceptual Example</strong>
-                               <span className="font-medium">{msg.analogyUsed}</span>
-                             </div>
-                          </div>
-                        )}
+
 
                         {msg.role === 'assistant' && msg.conceptNote && msg.conceptNote.length > 0 && (
                           <div className="mt-5 p-6 bg-indigo-50 border-2 border-indigo-200 text-slate-900 rounded-[2rem] shadow-lg relative overflow-hidden group">
@@ -726,7 +765,7 @@ const App: React.FC = () => {
                                 <ContextualActions 
                   lastMessage={state.messages[state.messages.length - 1]} 
                   onAction={(actionText) => handleSendMessage(actionText)} 
-                  onGenerateVideo={handleGenerateVideo}
+
                 />
                                 {attachment && (
                   <div className="max-w-4xl mx-auto mb-4 p-4 bg-slate-100 rounded-3xl border border-slate-200 flex items-center justify-between animate-in fade-in duration-300">
@@ -742,17 +781,7 @@ const App: React.FC = () => {
                     </button>
                   </div>
                 )}
-                                                {isVideoGenerating && (
-                  <div className="max-w-4xl mx-auto my-4 p-4 bg-slate-100 rounded-3xl border border-slate-200 flex items-center justify-center animate-in fade-in duration-300">
-                    <Loader2 className="w-5 h-5 text-indigo-600 animate-spin mr-3" />
-                    <p className="font-bold text-slate-800">Generating video explanation, this may take a moment...</p>
-                  </div>
-                )}
-                {generatedVideoUrl && (
-                  <div className="max-w-4xl mx-auto my-4 p-4 bg-slate-100 rounded-3xl border border-slate-200 animate-in fade-in duration-300">
-                    <video src={generatedVideoUrl} controls autoPlay className="w-full rounded-2xl" />
-                  </div>
-                )}
+
                                 <div className="max-w-4xl mx-auto flex items-center gap-5 pt-8">
                   <div className="flex-1 bg-slate-100 rounded-[3rem] border-2 border-slate-200 p-2.5 pl-10 flex items-center gap-5 focus-within:border-indigo-600 focus-within:bg-white focus-within:ring-8 focus-within:ring-indigo-50 transition-all duration-300">
                                         <input type="file" ref={fileInputRef} onChange={handleFileChange} accept="image/*" className="hidden" />
@@ -792,8 +821,18 @@ const App: React.FC = () => {
           )}
           {view === 'forum' && <CommunityForum posts={forumPosts} onUpdatePosts={setForumPosts} />}
           {view === 'vault' && <KnowledgeVault items={state.vault} sharedResources={state.sharedResources} onDeleteItem={handleDeleteVaultItem} onAddItem={handleAddItemToVault} language={state.language} />}
+          {view === 'grader' && <AssignmentGrader />}
           {view === 'dashboard' && <div className="p-10"><MasteryDashboard onStartLesson={startBridgeLesson} language={state.language} /></div>}
-          {view === 'teacher-home' && <TeacherDashboard forumPosts={forumPosts} onReply={handleTeacherReply} />}
+          {view === 'teacher-home' && <TeacherDashboard forumPosts={forumPosts} onReply={() => {}} />}
+          {view === 'admin-home' && (
+            <AdminDashboard 
+              resources={state.sharedResources} 
+              onAddResource={handleAddSharedResource} 
+              onRemoveResource={handleRemoveSharedResource} 
+              onUpdateStatus={handleUpdateResourceStatus}
+            />
+          )}
+          {view === 'teacher-home' && <TeacherDashboard forumPosts={forumPosts} onReply={() => {}} />}
           {view === 'admin-home' && (
             <AdminDashboard 
               resources={state.sharedResources} 

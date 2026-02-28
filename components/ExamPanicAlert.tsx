@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Wind, X, Volume2, Play, Pause, RefreshCw } from 'lucide-react';
-import { getBreathingCue } from '../services/geminiService';
+import { Wind, X, Volume2, Play, Pause, RefreshCw, Sparkles } from 'lucide-react';
+import { getBreathingCue, getMotivationalAffirmation } from '../services/geminiService';
 
 interface Props {
   onClose: () => void;
@@ -12,6 +12,8 @@ const ExamPanicAlert: React.FC<Props> = ({ onClose, language }) => {
   const [phase, setPhase] = useState<'Inhale' | 'Hold (Full)' | 'Exhale' | 'Hold (Empty)'>('Inhale');
   const [seconds, setSeconds] = useState(4);
   const [isActive, setIsActive] = useState(false);
+  const [affirmation, setAffirmation] = useState('');
+  const [isFetchingAffirmation, setIsFetchingAffirmation] = useState(false);
   const audioContextRef = useRef<AudioContext | null>(null);
 
   const playCue = async (text: string) => {
@@ -68,6 +70,13 @@ const ExamPanicAlert: React.FC<Props> = ({ onClose, language }) => {
     setPhase('Inhale');
     setSeconds(4);
     setIsActive(false);
+  };
+
+  const handleGetAffirmation = async () => {
+    setIsFetchingAffirmation(true);
+    const newAffirmation = await getMotivationalAffirmation(language);
+    setAffirmation(newAffirmation);
+    setIsFetchingAffirmation(false);
   };
 
   const progress = ((4 - seconds) / 4) * 100;
@@ -129,6 +138,19 @@ const ExamPanicAlert: React.FC<Props> = ({ onClose, language }) => {
             </button>
           </div>
 
+          {affirmation ? (
+            <div className="w-full p-6 bg-amber-50 rounded-3xl border-2 border-amber-200 text-center animate-in fade-in duration-500">
+              <p className="text-lg font-bold text-amber-900 italic">"{affirmation}"</p>
+            </div>
+          ) : (
+            <button 
+              onClick={handleGetAffirmation}
+              disabled={isFetchingAffirmation}
+              className="w-full py-5 bg-amber-500 text-white rounded-[2rem] font-black flex items-center justify-center gap-3 transition-all shadow-lg shadow-amber-200 active:scale-95 disabled:opacity-60"
+            >
+              {isFetchingAffirmation ? <><Loader2 className="w-5 h-5 animate-spin" /> Thinking...</> : <><Sparkles className="w-5 h-5" /> Inspire Me</>}
+            </button>
+          )}
           <div className="flex items-center gap-3 px-8 py-3 bg-indigo-50 rounded-full text-[10px] font-black uppercase text-indigo-600 tracking-[0.2em] animate-pulse">
             <Volume2 className="w-4 h-4" /> AI Voice Guide Active
           </div>

@@ -1,6 +1,6 @@
 import React from 'react';
 import { ChatMessage } from '../types';
-import { Zap, Lightbulb, BookOpen, Video } from 'lucide-react';
+import { Zap, Sparkles, BookOpen, Video } from 'lucide-react';
 
 interface Props {
   lastMessage: ChatMessage;
@@ -38,7 +38,7 @@ const ContextualActions: React.FC<Props> = ({ lastMessage, onAction, onGenerateV
   if (lastMessage.analogyUsed) {
     actions.push({
       text: 'Give me another analogy',
-      icon: Lightbulb,
+      icon: Sparkles,
       action: 'Can you explain this concept using a different analogy?'
     });
   }

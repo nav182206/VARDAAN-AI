@@ -5,7 +5,8 @@ import { Language, ChatMessage } from "../types";
 
 
 const SYSTEM_INSTRUCTION = `
-You are Vardaan AI, an elite Socratic academic coach for Class 11-12 NCERT India.
+You are Vardaan AI, an elite Socratic academic coach for Class 11-12 NCERT India. You are a "Phantom Step" detector, meaning your primary goal is to find the unstated assumption, logical leap, or hidden misunderstanding in a student's reasoning.
+
 SUBJECT CONTEXT: You handle Maths, Physics, Chemistry, Biology, Computer Science, and English Literature.
 
 CORE MISSION: Identify "Phantom Steps" (logical misconceptions). 
@@ -19,11 +20,12 @@ EXAMPLES:
 
 CONSTRAINTS:
 1. RESPONSE STYLE: Socratic. Ask ONE targeted question to make the student realize their logic gap.
-2. SUBJECT FIDELITY: All explanations, examples, and concepts MUST strictly relate to the provided SUBJECT. Do not use examples from other subjects (e.g., no physics examples for a math problem).
-3. NO CRICKET BIAS: Do not use cricket analogies unless the user is a sports fanatic. Use real-world engineering, medical, or computational examples relevant to the subject.
-4. STRUCTURE: provide a "Conceptual Note" (bullet points) and a "Scientific Example."
-5. LANGUAGE: Respond ONLY in {language}. Use English for technical terms.
-6. VOICE-TO-CONCEPT: If the user speaks casually or in a native dialect, parse their intent into precise NCERT technical terminology.
+2. ADAPTIVE EXPLANATION: Analyze the conversation history to gauge the student's current understanding. If they are asking basic questions, provide simpler, more foundational answers. If they are discussing advanced topics, offer more in-depth explanations.
+3. SUBJECT FIDELITY: All explanations, examples, and concepts MUST strictly relate to the provided SUBJECT. Do not use examples from other subjects (e.g., no physics examples for a math problem).
+4. NO CRICKET BIAS: Do not use cricket analogies unless the user is a sports fanatic. Use real-world engineering, medical, or computational examples relevant to the subject.
+5. STRUCTURE: provide a "Conceptual Note" (bullet points) and a "Scientific Example."
+6. LANGUAGE: Respond ONLY in {language}. Use English for technical terms.
+7. VOICE-TO-CONCEPT: If the user speaks casually or in a native dialect, parse their intent into precise NCERT technical terminology.
 
 FORMAT (JSON):
 {
@@ -44,7 +46,7 @@ export async function getCoachingResponse(
   subject: string,
   attachment?: { data: string; mimeType: string }
 ) {
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
 
   const conversationHistory = history.slice(-5).map(h => {
     const parts = [];
@@ -141,7 +143,7 @@ export async function getCoachingResponse(
 }
 
 export async function getStressSupport(stressLevel: string, subject: string, language: string) {
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
   const model = 'gemini-3-flash-preview';
   const prompt = `Affirmation for a student studying ${subject} at ${stressLevel} stress. Language: ${language}. One sentence affirmation, one sentence tip.`;
 
@@ -167,8 +169,25 @@ export async function getStressSupport(stressLevel: string, subject: string, lan
   }
 }
 
+export async function getMotivationalAffirmation(language: string): Promise<string> {
+  const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
+  const model = 'gemini-3-flash-preview';
+  const prompt = `Generate a short, powerful motivational affirmation for a student feeling overwhelmed during exam preparation. The affirmation should be encouraging and instill a sense of capability and resilience. Respond in ${language}. Format as a single sentence string.`;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: model,
+      contents: [{ parts: [{ text: prompt }] }],
+    });
+    return response.text.replace(/"/g, ''); // Clean up quotes
+  } catch (error) {
+    console.error("AI Motivational Affirmation Error:", error);
+    return "You have the strength to overcome any challenge.";
+  }
+}
+
 export async function getBreathingCue(text: string) {
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
   try {
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
@@ -189,7 +208,7 @@ export async function getBreathingCue(text: string) {
 }
 
 export async function getSmartGoals(goal: string, targetDate: string, language: Language) {
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
   const model = 'gemini-3-flash-preview';
   const prompt = `As an expert academic advisor, break down the following high-level goal into smaller, manageable milestones. The student wants to achieve: "${goal}" by ${targetDate}. The milestones should be specific, measurable, achievable, relevant, and time-bound (SMART). The response should be in ${language}. Format the output as a JSON object with a single key "milestones", which is an array of objects. Each object should have "milestone" (a string) and "status" (a string, initially "pending").`;
 
@@ -228,7 +247,7 @@ export async function getSmartGoals(goal: string, targetDate: string, language: 
 }
 
 export async function getDoubtExplanation(doubt: string, subject: string, language: Language) {
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
   const model = 'gemini-3-flash-preview';
   const prompt = `As an expert tutor for ${subject}, provide a clear, step-by-step explanation for the following doubt: "${doubt}". Break down complex concepts into simple, easy-to-understand steps. The explanation should be in ${language}. Format the output as a JSON object with a single key "explanation" which is an array of strings, where each string is a paragraph or a step in the explanation.`;
 
@@ -257,7 +276,7 @@ export async function getDoubtExplanation(doubt: string, subject: string, langua
 }
 
 export async function getChapterSummary(subject: string, chapter: string, language: Language) {
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
   const model = 'gemini-3-flash-preview';
   const prompt = `Generate a detailed, well-structured summary for the chapter titled "${chapter}" in the subject of ${subject}. The summary should be in ${language} and include key concepts, important definitions, and critical formulas. Format the output as a JSON object with a single key "summary" which is an array of strings, where each string is a key point or paragraph.`;
 
@@ -286,7 +305,7 @@ export async function getChapterSummary(subject: string, chapter: string, langua
 }
 
 export async function generatePracticeTest(subject: string, topic: string, language: Language) {
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
   const model = 'gemini-3-flash-preview';
   const prompt = `Generate a 5-question multiple-choice practice test on the topic "${topic}" in the subject of ${subject}. The questions should be challenging and relevant to the NCERT curriculum. The response should be in ${language}. Format the output as a JSON object with a single key "questions", which is an array of objects. Each object should have "question" (a string), "options" (an array of 4 strings), and "correctAnswer" (a string).`;
 
@@ -331,7 +350,7 @@ export async function generateStudyPlan(
   weakSubjects: string[],
   language: Language
 ) {
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
   const model = 'gemini-3-flash-preview';
   const prompt = `Class 12 plan for ${examType}. Date: ${examDate}. Weak: ${weakSubjects.join(', ')}. Include sections for all subjects including English and Computer Science.`;
 
@@ -374,39 +393,21 @@ export async function generateStudyPlan(
   }
 }
 
-export async function getVideoExplanation(prompt: string, aspectRatio: '16:9' | '9:16') {
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+
+export async function getRubricFeedback(submission: string, rubric: string): Promise<string> {
+  const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
+  const model = 'gemini-3-flash-preview';
+  const prompt = `As an expert academic evaluator, provide constructive feedback on the following submission based on the provided rubric.\n\nSUBMISSION:\n---\n${submission}\n---\n\nRUBRIC:\n---\n${rubric}\n---\n\nProvide feedback in a structured, encouraging, and actionable manner. Address each point in the rubric. Format the response as a markdown string.`;
 
   try {
-    let operation = await ai.models.generateVideos({
-      model: 'veo-3.1-fast-generate-preview',
-      prompt: `Create a short, engaging video explanation for the following concept: ${prompt}`,
-      config: {
-        numberOfVideos: 1,
-        resolution: '720p',
-        aspectRatio: aspectRatio
-      }
+    const response = await ai.models.generateContent({
+      model: model,
+      contents: [{ parts: [{ text: prompt }] }],
     });
-
-    while (!operation.done) {
-      await new Promise(resolve => setTimeout(resolve, 10000));
-      operation = await ai.operations.getVideosOperation({ operation: operation });
-    }
-
-    const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
-    if (downloadLink) {
-      const response = await fetch(downloadLink, {
-        method: 'GET',
-        headers: {
-          'x-goog-api-key': process.env.GEMINI_API_KEY!,
-        },
-      });
-      const blob = await response.blob();
-      return URL.createObjectURL(blob);
-    }
-    return null;
+    return response.text;
   } catch (error) {
-    console.error("Video Generation Error:", error);
-    return null;
+    console.error("AI Rubric Feedback Error:", error);
+    return "An error occurred while generating feedback. Please try again.";
   }
 }
