@@ -1,5 +1,5 @@
 
-export type Language = 'English' | 'Hindi' | 'Tamil' | 'Telugu' | 'Marathi' | 'Bengali' | 'Kannada';
+export type Language = 'English' | 'Hindi' | 'Tamil' | 'Telugu' | 'Marathi' | 'Bengali' | 'Kannada' | 'Gujarati' | 'Malayalam' | 'Punjabi' | 'Odia' | 'Assamese';
 
 export type UserRole = 'student' | 'teacher' | 'admin';
 
@@ -141,6 +141,19 @@ export interface AppState {
   studyPlan: StudyPlan | null;
 }
 
-export const SUPPORTED_LANGUAGES: Language[] = ['English', 'Hindi', 'Tamil', 'Telugu', 'Marathi', 'Bengali', 'Kannada'];
+export const SUPPORTED_LANGUAGES: Language[] = [
+  'English', 
+  'Hindi', 
+  'Tamil', 
+  'Telugu', 
+  'Marathi', 
+  'Bengali', 
+  'Kannada', 
+  'Gujarati', 
+  'Malayalam', 
+  'Punjabi', 
+  'Odia', 
+  'Assamese'
+];
 
 export const SUBJECTS = ['Physics', 'Chemistry', 'Maths', 'Biology', 'Computer Science', 'English Literature'] as const;
