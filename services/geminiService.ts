@@ -37,9 +37,9 @@ FORMAT (JSON):
 `;
 
 function getAI() {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = import.meta.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    throw new Error("GEMINI_API_KEY is not defined.");
+    throw new Error("Gemini API Key is missing. Please ensure VITE_GEMINI_API_KEY is set in your environment.");
   }
   return new GoogleGenAI({ apiKey });
 }
@@ -137,11 +137,21 @@ export async function getCoachingResponse(
   } catch (error: any) {
     console.error("AI Error:", error);
     const errorMessage = error.message || "Unknown error";
+    
+    // Check for specific common errors
+    let directAnswer = "Connection Error";
+    let socraticExplanation = `I'm having trouble connecting to my AI brain. Error: "${errorMessage}".`;
+    
+    if (errorMessage.includes("API Key") || errorMessage.includes("not defined")) {
+      directAnswer = "Configuration Required";
+      socraticExplanation = "It looks like my API key isn't set up correctly yet. Please make sure you've added VITE_GEMINI_API_KEY to your environment variables.";
+    }
+
     return {
-      directAnswer: "Technical Error Details",
-      socraticExplanation: `The AI connection failed with the following error: "${errorMessage}".`,
-      conceptualExample: "Check your browser console for more details.",
-      conceptNote: ["Error: " + errorMessage],
+      directAnswer,
+      socraticExplanation,
+      conceptualExample: "Please check your network connection and API configuration.",
+      conceptNote: ["Action Required: Verify API Key", "Action Required: Check Network"],
       phantomStepDetected: false,
       stressDetection: "low"
     };
