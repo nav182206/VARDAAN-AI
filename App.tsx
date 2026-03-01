@@ -91,6 +91,7 @@ const INITIAL_RESOURCES: SharedResource[] = [
 
 const App: React.FC = () => {
   const [state, setState] = useState<AppState>({
+    user: null,
     language: 'English',
     selectedSubject: 'Maths',
     messages: [
@@ -264,7 +265,11 @@ const App: React.FC = () => {
 
   const startVoiceSession = async () => {
     try {
-            const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+      if (!apiKey) {
+        throw new Error("VITE_GEMINI_API_KEY is not defined");
+      }
+      const ai = new GoogleGenAI({ apiKey });
       const inputCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
       const outputCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
       audioContextRef.current = outputCtx;
@@ -671,7 +676,7 @@ const App: React.FC = () => {
                     <h3 className="text-3xl font-black text-slate-800">Mastery Snapshot</h3>
                     <button onClick={() => setView('dashboard')} className="text-indigo-600 font-black flex items-center gap-2 hover:gap-4 transition-all uppercase text-xs tracking-widest">Syllabus Overview <ArrowRight className="w-5 h-5" /></button>
                   </div>
-                  <MasteryDashboard onStartLesson={startBridgeLesson} />
+                  <MasteryDashboard onStartLesson={startBridgeLesson} language={state.language} />
                 </div>
               </div>
             </div>
@@ -765,7 +770,7 @@ const App: React.FC = () => {
                                 <ContextualActions 
                   lastMessage={state.messages[state.messages.length - 1]} 
                   onAction={(actionText) => handleSendMessage(actionText)} 
-
+                  onGenerateVideo={(prompt) => console.log('Video generation requested for:', prompt)}
                 />
                                 {attachment && (
                   <div className="max-w-4xl mx-auto mb-4 p-4 bg-slate-100 rounded-3xl border border-slate-200 flex items-center justify-between animate-in fade-in duration-300">

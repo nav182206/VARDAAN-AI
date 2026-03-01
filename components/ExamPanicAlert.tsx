@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Wind, X, Volume2, Play, Pause, RefreshCw, Sparkles } from 'lucide-react';
+import { Wind, X, Volume2, Play, Pause, RefreshCw, Sparkles, Loader2 } from 'lucide-react';
 import { getBreathingCue, getMotivationalAffirmation } from '../services/geminiService';
 
 interface Props {

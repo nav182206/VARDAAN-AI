@@ -2,7 +2,7 @@
 import React from 'react';
 import PracticeTest from './PracticeTest';
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer, RadarProps } from 'recharts';
-import { TopicMastery } from '../types';
+import { TopicMastery, Language } from '../types';
 import { Target, TrendingUp, AlertTriangle, ArrowRight, Brain } from 'lucide-react';
 
 const mockData: TopicMastery[] = [

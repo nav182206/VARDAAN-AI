@@ -1,8 +1,5 @@
-
 import { GoogleGenAI, Type, Modality } from "@google/genai";
 import { Language, ChatMessage } from "../types";
-
-
 
 const SYSTEM_INSTRUCTION = `
 You are Vardaan AI, an elite Socratic academic coach for Class 11-12 NCERT India. You are a "Phantom Step" detector, meaning your primary goal is to find the unstated assumption, logical leap, or hidden misunderstanding in a student's reasoning.
@@ -39,6 +36,14 @@ FORMAT (JSON):
 }
 `;
 
+function getAI() {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error("GEMINI_API_KEY is not defined.");
+  }
+  return new GoogleGenAI({ apiKey });
+}
+
 export async function getCoachingResponse(
   prompt: string,
   history: ChatMessage[],
@@ -46,7 +51,7 @@ export async function getCoachingResponse(
   subject: string,
   attachment?: { data: string; mimeType: string }
 ) {
-  const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
+  const ai = getAI();
 
   const conversationHistory = history.slice(-5).map(h => {
     const parts = [];
@@ -129,13 +134,14 @@ export async function getCoachingResponse(
             stressDetection: "low"
         };
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error("AI Error:", error);
+    const errorMessage = error.message || "Unknown error";
     return {
-      directAnswer: "A small glitch occurred.",
-      socraticExplanation: "There was a temporary issue connecting to the AI. Please try sending your message again.",
-      conceptualExample: "Connectivity is key.",
-      conceptNote: ["Retry your request"],
+      directAnswer: "Technical Error Details",
+      socraticExplanation: `The AI connection failed with the following error: "${errorMessage}".`,
+      conceptualExample: "Check your browser console for more details.",
+      conceptNote: ["Error: " + errorMessage],
       phantomStepDetected: false,
       stressDetection: "low"
     };
@@ -143,7 +149,7 @@ export async function getCoachingResponse(
 }
 
 export async function getStressSupport(stressLevel: string, subject: string, language: string) {
-  const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
+  const ai = getAI();
   const model = 'gemini-3-flash-preview';
   const prompt = `Affirmation for a student studying ${subject} at ${stressLevel} stress. Language: ${language}. One sentence affirmation, one sentence tip.`;
 
@@ -170,7 +176,7 @@ export async function getStressSupport(stressLevel: string, subject: string, lan
 }
 
 export async function getMotivationalAffirmation(language: string): Promise<string> {
-  const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
+  const ai = getAI();
   const model = 'gemini-3-flash-preview';
   const prompt = `Generate a short, powerful motivational affirmation for a student feeling overwhelmed during exam preparation. The affirmation should be encouraging and instill a sense of capability and resilience. Respond in ${language}. Format as a single sentence string.`;
 
@@ -187,7 +193,7 @@ export async function getMotivationalAffirmation(language: string): Promise<stri
 }
 
 export async function getBreathingCue(text: string) {
-  const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
+  const ai = getAI();
   try {
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
@@ -208,7 +214,7 @@ export async function getBreathingCue(text: string) {
 }
 
 export async function getSmartGoals(goal: string, targetDate: string, language: Language) {
-  const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
+  const ai = getAI();
   const model = 'gemini-3-flash-preview';
   const prompt = `As an expert academic advisor, break down the following high-level goal into smaller, manageable milestones. The student wants to achieve: "${goal}" by ${targetDate}. The milestones should be specific, measurable, achievable, relevant, and time-bound (SMART). The response should be in ${language}. Format the output as a JSON object with a single key "milestones", which is an array of objects. Each object should have "milestone" (a string) and "status" (a string, initially "pending").`;
 
@@ -247,7 +253,7 @@ export async function getSmartGoals(goal: string, targetDate: string, language: 
 }
 
 export async function getDoubtExplanation(doubt: string, subject: string, language: Language) {
-  const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
+  const ai = getAI();
   const model = 'gemini-3-flash-preview';
   const prompt = `As an expert tutor for ${subject}, provide a clear, step-by-step explanation for the following doubt: "${doubt}". Break down complex concepts into simple, easy-to-understand steps. The explanation should be in ${language}. Format the output as a JSON object with a single key "explanation" which is an array of strings, where each string is a paragraph or a step in the explanation.`;
 
@@ -276,7 +282,7 @@ export async function getDoubtExplanation(doubt: string, subject: string, langua
 }
 
 export async function getChapterSummary(subject: string, chapter: string, language: Language) {
-  const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
+  const ai = getAI();
   const model = 'gemini-3-flash-preview';
   const prompt = `Generate a detailed, well-structured summary for the chapter titled "${chapter}" in the subject of ${subject}. The summary should be in ${language} and include key concepts, important definitions, and critical formulas. Format the output as a JSON object with a single key "summary" which is an array of strings, where each string is a key point or paragraph.`;
 
@@ -305,7 +311,7 @@ export async function getChapterSummary(subject: string, chapter: string, langua
 }
 
 export async function generatePracticeTest(subject: string, topic: string, language: Language) {
-  const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
+  const ai = getAI();
   const model = 'gemini-3-flash-preview';
   const prompt = `Generate a 5-question multiple-choice practice test on the topic "${topic}" in the subject of ${subject}. The questions should be challenging and relevant to the NCERT curriculum. The response should be in ${language}. Format the output as a JSON object with a single key "questions", which is an array of objects. Each object should have "question" (a string), "options" (an array of 4 strings), and "correctAnswer" (a string).`;
 
@@ -350,7 +356,7 @@ export async function generateStudyPlan(
   weakSubjects: string[],
   language: Language
 ) {
-  const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
+  const ai = getAI();
   const model = 'gemini-3-flash-preview';
   const prompt = `Class 12 plan for ${examType}. Date: ${examDate}. Weak: ${weakSubjects.join(', ')}. Include sections for all subjects including English and Computer Science.`;
 
@@ -393,10 +399,8 @@ export async function generateStudyPlan(
   }
 }
 
-
-
 export async function getRubricFeedback(submission: string, rubric: string): Promise<string> {
-  const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
+  const ai = getAI();
   const model = 'gemini-3-flash-preview';
   const prompt = `As an expert academic evaluator, provide constructive feedback on the following submission based on the provided rubric.\n\nSUBMISSION:\n---\n${submission}\n---\n\nRUBRIC:\n---\n${rubric}\n---\n\nProvide feedback in a structured, encouraging, and actionable manner. Address each point in the rubric. Format the response as a markdown string.`;
 

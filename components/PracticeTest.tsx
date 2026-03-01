@@ -56,7 +56,7 @@ const PracticeTest: React.FC<Props> = ({ language }) => {
             <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Subject</label>
             <select 
               value={subject} 
-              onChange={(e) => setSubject(e.target.value)} 
+              onChange={(e) => setSubject(e.target.value as any)} 
               className="mt-2 w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold focus:ring-4 focus:ring-purple-50 focus:border-purple-500 outline-none transition-all"
             >
               {SUBJECTS.map(s => <option key={s} value={s}>{s}</option>)}
