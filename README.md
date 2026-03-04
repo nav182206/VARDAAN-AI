@@ -57,10 +57,13 @@ npm install
 3. Environment Variables
 Create a .env file in the root directory and add the following:
 code
-Env
+
 VITE_GEMINI_API_KEY=your_gemini_api_key_here
+
 VITE_SUPABASE_URL=your_supabase_project_url
+
 VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+
 5. Run the development server
 code
 Bash
